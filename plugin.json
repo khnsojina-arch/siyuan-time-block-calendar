@@ -2,7 +2,7 @@
   "name": "siyuan-time-block-calendar",
   "author": "khnsojina-arch",
   "url": "https://github.com/khnsojina-arch/siyuan-time-block-calendar",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "minAppVersion": "3.1.0",
   "backends": [
     "all"
@@ -13,11 +13,11 @@
   "disabledInPublish": true,
   "displayName": {
     "default": "Time Block Calendar",
-    "zh_CN": "时间块日历"
+    "zh_CN": "时间块日历｜日程规划、时间管理、番茄钟与提醒"
   },
   "description": {
-    "default": "A Notion Calendar style time-block calendar for SiYuan, with reminders, desktop notifications, JSON backup import/export, a compact Pomodoro timer, and iHour .ihbak export.",
-    "zh_CN": "Notion Calendar 风格的时间块日历，支持周、三天、月、年视图，提醒、电脑系统通知、JSON 备份导入导出、侧栏番茄钟，以及 iHour .ihbak 解析导出 JSON。"
+    "default": "A Notion Calendar style time-block calendar for SiYuan, supporting week, three-day, month and year views, reminders, Pomodoro, task planning, JSON import/export, study plans and review schedules.",
+    "zh_CN": "一个面向思源笔记的时间块日历插件，支持周视图、三天视图、月视图、年视图、提醒、番茄钟、JSON 导入导出，帮助你完成日程规划、时间管理、学习计划、复习计划和任务安排。"
   },
   "readme": {
     "default": "README.md"
@@ -26,11 +26,24 @@
     "calendar",
     "planner",
     "time-block",
+    "task-planning",
     "daily-note",
     "pomodoro",
-    "日历",
+    "reminder",
+    "notion-calendar",
+    "study-plan",
+    "日程规划",
+    "时间管理",
     "时间块",
-    "计划",
-    "待办"
+    "日历",
+    "任务计划",
+    "待办",
+    "提醒",
+    "番茄钟",
+    "周视图",
+    "月视图",
+    "年视图",
+    "学习计划",
+    "复习计划"
   ]
 }
