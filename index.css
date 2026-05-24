@@ -1747,3 +1747,33 @@
 .stbc-root.is-mobile .stbc-hour-label{right:5px;font-size:11px}
 .stbc-root.is-mobile .stbc-month{min-width:760px}
 .stbc-root.is-mobile .stbc-year{min-width:0}
+
+.stbc-glass-dialog .b3-dialog__container{
+  max-height:calc(100vh - 24px) !important;
+  overflow:hidden !important;
+}
+.stbc-glass-dialog .b3-dialog__body{
+  max-height:calc(100vh - 68px) !important;
+  overflow:auto !important;
+  scrollbar-gutter:stable;
+}
+.stbc-glass-dialog .stbc-form{
+  max-height:calc(100vh - 76px) !important;
+  overflow:auto !important;
+  box-sizing:border-box;
+}
+.stbc-glass-dialog .stbc-form-actions{
+  position:sticky;
+  bottom:0;
+  margin:4px -2px -2px;
+  padding:10px 2px 2px;
+  background:linear-gradient(to bottom, transparent, rgba(255,255,255,.84) 28%, rgba(255,255,255,.92));
+  -webkit-backdrop-filter:blur(16px) saturate(118%);
+  backdrop-filter:blur(16px) saturate(118%);
+  z-index:3;
+}
+@media (max-height: 720px){
+  .stbc-glass-dialog .stbc-form{gap:8px !important;padding-top:12px !important;padding-bottom:10px !important}
+  .stbc-glass-dialog .stbc-form-note{min-height:54px !important}
+  .stbc-glass-dialog .stbc-color-grid{gap:6px !important}
+}
