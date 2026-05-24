@@ -139,6 +139,7 @@
         (this.statusSyncBusy = !1),
         (this.nowLineTimer = void 0),
         (this.reminderTimer = void 0),
+        (this.settingsDraftConfig = void 0),
         (this.reminderBusy = !1),
         (this.reminderNotifiedInSession = new Set()));
     }
@@ -173,7 +174,9 @@
         }),
         (this.setting = new n.Setting({
           confirmCallback: () => {
-            (this.saveData(a, this.config),
+            (this.settingsDraftConfig && (this.config = { ...this.config, ...this.settingsDraftConfig }),
+              (this.settingsDraftConfig = void 0),
+              this.saveData(a, this.config),
               (0, n.showMessage)("时间块日历设置已保存"));
           },
         })),
@@ -198,29 +201,46 @@
         callback: () => this.openCalendarTab(),
       });
     }
+    getSettingsDraftConfig() {
+      return (
+        this.settingsDraftConfig ||
+        (this.settingsDraftConfig = {
+          notebookId: this.config.notebookId,
+          dailyRootHPath: this.config.dailyRootHPath,
+          desktopNotificationEnabled: this.config.desktopNotificationEnabled,
+          desktopNotificationMissedEnabled: this.config.desktopNotificationMissedEnabled,
+        })
+      );
+    }
     addSettings() {
       const t = document.createElement("input");
       ((t.className = "b3-text-field fn__block"),
         (t.value = this.config.notebookId),
         t.addEventListener("change", () => {
-          this.config.notebookId = t.value.trim();
+          this.getSettingsDraftConfig().notebookId = t.value.trim();
         }),
         this.setting.addItem({
           title: "笔记本 ID",
           description: "用于创建 daily note 日期文档。",
-          createActionElement: () => t,
+          createActionElement: () => {
+            const e = this.getSettingsDraftConfig();
+            return ((e.notebookId = this.config.notebookId), (t.value = this.config.notebookId), t);
+          },
         }));
       const e = document.createElement("input");
       ((e.className = "b3-text-field fn__block"),
         (e.value = this.config.dailyRootHPath),
         e.addEventListener("change", () => {
-          this.config.dailyRootHPath = e.value.trim() || "/daily note";
+          this.getSettingsDraftConfig().dailyRootHPath = e.value.trim() || "/daily note";
         }),
         this.setting.addItem({
           title: "日记根路径",
           description:
             "默认 /daily note，事件会写入 /daily note/YYYY/MM/YYYY-MM-DD。",
-          createActionElement: () => e,
+          createActionElement: () => {
+            const t = this.getSettingsDraftConfig();
+            return ((t.dailyRootHPath = this.config.dailyRootHPath), (e.value = this.config.dailyRootHPath), e);
+          },
         }));
       const s = document.createElement("div"),
         a = document.createElement("label"),
@@ -238,10 +258,10 @@
         s.appendChild(a),
         s.appendChild(o),
         i.addEventListener("change", () => {
-          this.config.desktopNotificationEnabled = i.checked;
+          this.getSettingsDraftConfig().desktopNotificationEnabled = i.checked;
         }),
         o.addEventListener("click", async () => {
-          this.config.desktopNotificationEnabled = true;
+          this.getSettingsDraftConfig().desktopNotificationEnabled = true;
           i.checked = true;
           const t = await this.ensureDesktopNotificationPermission(true);
           t &&
@@ -255,7 +275,10 @@
           title: "电脑系统通知",
           description:
             "到点后会调用 Windows/macOS/Linux 的原生系统通知，同时保留思源内提醒。思源未运行时仍不会实时提醒。",
-          createActionElement: () => s,
+          createActionElement: () => {
+            const t = this.getSettingsDraftConfig();
+            return ((t.desktopNotificationEnabled = this.config.desktopNotificationEnabled), (i.checked = !1 !== this.config.desktopNotificationEnabled), s);
+          },
         }));
       const r = document.createElement("label"),
         c = document.createElement("input");
@@ -265,13 +288,16 @@
         r.appendChild(c),
         r.appendChild(document.createTextNode(" 错过提醒也发送系统通知")),
         c.addEventListener("change", () => {
-          this.config.desktopNotificationMissedEnabled = c.checked;
+          this.getSettingsDraftConfig().desktopNotificationMissedEnabled = c.checked;
         }),
         this.setting.addItem({
           title: "错过提醒补发",
           description:
             "关闭时，重新打开思源后只在笔记内补发旧提醒，避免系统通知被大量刷屏。",
-          createActionElement: () => r,
+          createActionElement: () => {
+            const t = this.getSettingsDraftConfig();
+            return ((t.desktopNotificationMissedEnabled = this.config.desktopNotificationMissedEnabled), (c.checked = !0 === this.config.desktopNotificationMissedEnabled), r);
+          },
         }));
       const l = document.createElement("div"),
         d = document.createElement("input"),
@@ -312,7 +338,11 @@
           createActionElement: () => l,
         }));
     }
+    isMobileFrontend() {
+      return String(n.getFrontend?.() || "").endsWith("mobile");
+    }
     openCalendarTab() {
+      if (this.isMobileFrontend()) return this.openCalendarDialog();
       (0, n.openTab)({
         app: this.app,
         custom: {
@@ -328,8 +358,8 @@
         title: "时间块日历",
         content:
           '<div class="stbc-root"><div class="stbc-empty">时间块日历正在加载...</div></div>',
-        width: "92vw",
-        height: "86vh",
+        width: this.isMobileFrontend() ? "100vw" : "92vw",
+        height: this.isMobileFrontend() ? "100vh" : "86vh",
       });
       ((this.rootElement = t.element.querySelector(".stbc-root")),
         this.render().catch((t) => {
@@ -342,7 +372,8 @@
     }
     async render() {
       this.rootElement &&
-        ((this.rootElement.innerHTML = this.renderShellV2()),
+        (this.rootElement.classList.toggle("is-mobile", this.isMobileFrontend()),
+        (this.rootElement.innerHTML = this.renderShellV2()),
         this.bindToolbar(),
         this.bindHorizontalWheelScroll(),
         await this.loadEvents(),

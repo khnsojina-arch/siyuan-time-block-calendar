@@ -1729,3 +1729,21 @@
   .stbc-pomodoro-record-time{color:rgba(226,232,240,.94);}
   .stbc-pomodoro-empty{background:rgba(15,23,42,.28);}
 }
+
+.stbc-root.is-mobile{min-height:100%;height:100%;font-size:13px}
+.stbc-root.is-mobile .stbc-toolbar{height:auto;min-height:44px;padding:8px;flex-wrap:wrap}
+.stbc-root.is-mobile .stbc-toolbar-title{width:100%;margin-right:0;font-size:16px}
+.stbc-root.is-mobile .stbc-toolbar-actions{width:100%;overflow-x:auto;padding-bottom:2px}
+.stbc-root.is-mobile .stbc-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto}
+.stbc-root.is-mobile .stbc-body.has-inspector{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto}
+.stbc-root.is-mobile .stbc-sidebar{border-right:0;border-bottom:1px solid var(--stbc-border);padding:8px;max-height:220px}
+.stbc-root.is-mobile .stbc-mini-card{box-shadow:none}
+.stbc-root.is-mobile .stbc-main{min-height:420px;overflow:auto;-webkit-overflow-scrolling:touch}
+.stbc-root.is-mobile .stbc-inspector{border-left:0;border-top:1px solid var(--stbc-border);max-height:50vh;overflow:auto}
+.stbc-root.is-mobile .stbc-week{min-width:760px}
+.stbc-root.is-mobile .stbc-week-header-grid,
+.stbc-root.is-mobile .stbc-week-body{grid-template-columns:52px repeat(var(--stbc-days, 7), minmax(100px, 1fr))}
+.stbc-root.is-mobile .stbc-timezone{font-size:12px}
+.stbc-root.is-mobile .stbc-hour-label{right:5px;font-size:11px}
+.stbc-root.is-mobile .stbc-month{min-width:760px}
+.stbc-root.is-mobile .stbc-year{min-width:0}

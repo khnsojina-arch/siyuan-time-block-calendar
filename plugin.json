@@ -2,13 +2,17 @@
   "name": "siyuan-time-block-calendar",
   "author": "khnsojina-arch",
   "url": "https://github.com/khnsojina-arch/siyuan-time-block-calendar",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "minAppVersion": "3.1.0",
   "backends": [
     "all"
   ],
   "frontends": [
-    "all"
+    "desktop",
+    "mobile",
+    "browser-desktop",
+    "browser-mobile",
+    "desktop-window"
   ],
   "disabledInPublish": true,
   "displayName": {
@@ -20,8 +24,7 @@
     "zh_CN": "Notion Calendar 风格的时间块日历，支持周、三天、月、年视图，提醒、电脑系统通知、JSON 备份导入导出、侧栏番茄钟，以及 iHour .ihbak 解析导出 JSON。"
   },
   "readme": {
-    "default": "README.md",
-    "zh_CN": "README.md"
+    "default": "README.md"
   },
   "keywords": [
     "calendar",
@@ -32,7 +35,6 @@
     "日历",
     "时间块",
     "计划",
-    "思源",
     "待办"
   ]
 }

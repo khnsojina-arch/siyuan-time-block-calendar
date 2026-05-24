@@ -4,3 +4,4 @@ node_modules/
 *.tmp
 package.zip
 __package_check/
+review-assets/
