@@ -1767,22 +1767,31 @@
 .stbc-glass-dialog .stbc-form-time-row{
   display:grid !important;
   grid-template-columns:1fr 1fr !important;
-  gap:12px !important;
+  gap:18px !important;
 }
 .stbc-glass-dialog .stbc-form-time-row label{
   display:grid;
-  grid-template-columns:46px minmax(0,1fr);
+  grid-template-columns:42px minmax(0,1fr);
   align-items:center;
-  gap:8px;
+  gap:10px;
+  min-width:0;
 }
 .stbc-glass-dialog .stbc-form-time-row span{
   color:rgba(15,23,42,.78);
   font-size:13px;
   font-weight:500;
+  line-height:34px;
+  text-align:left;
+  white-space:nowrap;
+}
+.stbc-glass-dialog .stbc-form-time-row input{
+  width:100%;
+  min-width:0;
 }
 .stbc-glass-dialog .stbc-form-duration-row{
   grid-template-columns:68px minmax(0,1fr) !important;
   align-items:center !important;
+  min-height:34px;
 }
 .stbc-glass-dialog .stbc-form-duration-value{
   min-height:0 !important;
@@ -1793,16 +1802,303 @@
   font-size:13px !important;
 }
 .stbc-glass-dialog .stbc-form-actions{
-  position:static;
-  margin:0;
-  padding-top:8px;
+  position:static !important;
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:12px !important;
+  margin:0 !important;
+  padding:8px 0 0 !important;
   background:transparent;
   -webkit-backdrop-filter:none;
   backdrop-filter:none;
   z-index:3;
 }
+.stbc-glass-dialog .stbc-form-actions .b3-button{
+  width:100% !important;
+  min-width:0 !important;
+}
 @media (max-height: 720px){
   .stbc-glass-dialog .stbc-form{gap:8px !important;padding-top:12px !important;padding-bottom:10px !important}
   .stbc-glass-dialog .stbc-form-note{min-height:54px !important}
   .stbc-glass-dialog .stbc-color-grid{gap:6px !important}
+}
+
+/* Clean, flat create/edit dialog polish */
+.stbc-glass-dialog .b3-dialog__container{
+  width:min(500px, calc(100vw - 40px)) !important;
+  max-width:500px !important;
+  border:1px solid rgba(255,255,255,.45) !important;
+  border-radius:28px !important;
+  background:rgba(250,250,252,.76) !important;
+  -webkit-backdrop-filter:blur(18px) saturate(140%) !important;
+  backdrop-filter:blur(18px) saturate(140%) !important;
+  box-shadow:0 12px 40px rgba(15,23,42,.12) !important;
+  overflow:visible !important;
+}
+.stbc-glass-dialog .b3-dialog__container::before,
+.stbc-glass-dialog .b3-dialog__container::after{
+  display:none !important;
+}
+.stbc-glass-dialog .b3-dialog__header{
+  padding:30px 32px 14px !important;
+  min-height:auto !important;
+  border:0 !important;
+  justify-content:center !important;
+  text-align:center !important;
+  color:#0f172a !important;
+  font-size:26px !important;
+  line-height:1.18 !important;
+  font-weight:760 !important;
+  letter-spacing:0 !important;
+  background:transparent !important;
+}
+.stbc-glass-dialog .b3-dialog__body{
+  padding:0 32px 30px !important;
+  background:transparent !important;
+  overflow:visible !important;
+}
+.stbc-glass-dialog .b3-dialog__close{
+  top:18px !important;
+  right:18px !important;
+  width:30px !important;
+  height:30px !important;
+  border:0 !important;
+  background:transparent !important;
+  color:rgba(71,85,105,.7) !important;
+  box-shadow:none !important;
+}
+.stbc-glass-dialog .b3-dialog__close:hover{
+  background:rgba(15,23,42,.05) !important;
+  color:#0f172a !important;
+}
+.stbc-glass-dialog .stbc-form{
+  padding:0 !important;
+  gap:18px !important;
+  max-height:calc(100vh - 88px) !important;
+  overflow:auto !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  scrollbar-width:none;
+}
+.stbc-glass-dialog .stbc-form::-webkit-scrollbar{
+  width:0;
+  height:0;
+}
+.stbc-glass-dialog .stbc-form-row,
+.stbc-glass-dialog .stbc-label-row{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:8px !important;
+  align-items:start !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+.stbc-glass-dialog .stbc-form-row > span,
+.stbc-glass-dialog .stbc-label-row > span,
+.stbc-glass-dialog .stbc-form-time-row span{
+  color:#475569 !important;
+  font-size:13px !important;
+  line-height:1.2 !important;
+  font-weight:620 !important;
+  letter-spacing:0 !important;
+  text-align:left !important;
+}
+.stbc-glass-dialog .b3-text-field,
+.stbc-glass-dialog .stbc-label-trigger,
+.stbc-glass-dialog .stbc-form-label-select{
+  width:100% !important;
+  height:44px !important;
+  padding:0 14px !important;
+  border:1px solid rgba(15,23,42,.08) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.45) !important;
+  color:#0f172a !important;
+  box-shadow:none !important;
+  outline:none !important;
+  box-sizing:border-box !important;
+  transition:border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.stbc-glass-dialog .b3-text-field:hover,
+.stbc-glass-dialog .stbc-label-trigger:hover,
+.stbc-glass-dialog .stbc-form-label-select:hover{
+  background:rgba(255,255,255,.62) !important;
+  border-color:rgba(15,23,42,.12) !important;
+  box-shadow:none !important;
+}
+.stbc-glass-dialog .b3-text-field:focus,
+.stbc-glass-dialog .stbc-label-trigger:focus,
+.stbc-glass-dialog .stbc-label-trigger.is-open{
+  border-color:rgba(59,130,246,.65) !important;
+  background:rgba(255,255,255,.72) !important;
+  box-shadow:0 0 0 3px rgba(59,130,246,.12) !important;
+}
+.stbc-glass-dialog .stbc-form-time-row{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:12px !important;
+}
+.stbc-glass-dialog .stbc-form-time-row label{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:8px !important;
+  min-width:0 !important;
+}
+.stbc-glass-dialog .stbc-form-time-row input{
+  height:44px !important;
+  padding-left:14px !important;
+  padding-right:12px !important;
+}
+.stbc-glass-dialog .stbc-form-duration-row{
+  display:grid !important;
+  grid-template-columns:auto minmax(0,1fr) !important;
+  align-items:center !important;
+  column-gap:10px !important;
+  min-height:44px !important;
+  padding:0 14px !important;
+  border:1px solid rgba(15,23,42,.08) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.38) !important;
+}
+.stbc-glass-dialog .stbc-form-duration-row > span{
+  color:#475569 !important;
+  font-size:13px !important;
+  line-height:1 !important;
+  font-weight:620 !important;
+}
+.stbc-glass-dialog .stbc-form-duration-value{
+  min-height:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  color:#0f172a !important;
+  box-shadow:none !important;
+  font-size:14px !important;
+  font-weight:740 !important;
+  line-height:1 !important;
+}
+.stbc-glass-dialog .stbc-label-trigger{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+}
+.stbc-glass-dialog .stbc-label-menu{
+  top:50px !important;
+  border:1px solid rgba(15,23,42,.1) !important;
+  border-radius:12px !important;
+  background:rgba(255,255,255,.96) !important;
+  -webkit-backdrop-filter:blur(12px) !important;
+  backdrop-filter:blur(12px) !important;
+  box-shadow:0 12px 28px rgba(15,23,42,.12) !important;
+}
+.stbc-glass-dialog .stbc-color-grid{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:12px !important;
+  padding:5px 8px 4px !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  overflow:visible !important;
+}
+.stbc-glass-dialog .stbc-color-choice{
+  overflow:visible !important;
+}
+.stbc-glass-dialog .stbc-color-choice span{
+  width:26px !important;
+  height:26px !important;
+  border-width:2px !important;
+  box-shadow:none !important;
+  transition:transform .12s ease, outline-color .12s ease;
+}
+.stbc-glass-dialog .stbc-color-choice span:hover{
+  transform:scale(1.04) !important;
+  box-shadow:none !important;
+}
+.stbc-glass-dialog .stbc-color-choice input:checked + span{
+  outline:2px solid var(--stbc-choice-color) !important;
+  outline-offset:2px !important;
+  transform:none !important;
+  box-shadow:none !important;
+}
+.stbc-glass-dialog .stbc-form-note{
+  min-height:78px !important;
+  height:78px !important;
+  padding:12px 14px !important;
+  line-height:1.45 !important;
+  resize:vertical;
+}
+.stbc-glass-dialog .stbc-form-note::placeholder,
+.stbc-glass-dialog .b3-text-field::placeholder{
+  color:rgba(100,116,139,.58) !important;
+}
+.stbc-glass-dialog .stbc-form-actions{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:12px !important;
+  padding:4px 0 0 !important;
+  margin:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+}
+.stbc-glass-dialog .stbc-form-actions .b3-button{
+  width:100% !important;
+  min-width:0 !important;
+  height:44px !important;
+  border-radius:12px !important;
+  box-shadow:none !important;
+  font-size:14px !important;
+  font-weight:680 !important;
+}
+.stbc-glass-dialog .stbc-form-actions .b3-button--cancel{
+  background:rgba(255,255,255,.42) !important;
+  color:#334155 !important;
+  border:1px solid rgba(15,23,42,.08) !important;
+}
+.stbc-glass-dialog .stbc-form-actions .b3-button--text{
+  background:linear-gradient(180deg, rgba(238,246,255,.88), rgba(224,239,255,.78)) !important;
+  color:#2563eb !important;
+  border:1px solid rgba(37,99,235,.15) !important;
+}
+.stbc-glass-dialog .stbc-form-actions .b3-button:hover{
+  filter:brightness(1.02);
+  box-shadow:none !important;
+}
+@media (prefers-color-scheme: dark){
+  .stbc-glass-dialog .b3-dialog__container{
+    border-color:rgba(255,255,255,.16) !important;
+    background:rgba(15,23,42,.76) !important;
+    box-shadow:0 12px 40px rgba(0,0,0,.28) !important;
+  }
+  .stbc-glass-dialog .b3-dialog__header,
+  .stbc-glass-dialog .stbc-form-duration-value{
+    color:#f8fafc !important;
+  }
+  .stbc-glass-dialog .stbc-form-row > span,
+  .stbc-glass-dialog .stbc-label-row > span,
+  .stbc-glass-dialog .stbc-form-time-row span,
+  .stbc-glass-dialog .stbc-form-duration-row > span{
+    color:rgba(226,232,240,.74) !important;
+  }
+  .stbc-glass-dialog .b3-text-field,
+  .stbc-glass-dialog .stbc-label-trigger,
+  .stbc-glass-dialog .stbc-form-label-select,
+  .stbc-glass-dialog .stbc-form-duration-row{
+    border-color:rgba(255,255,255,.12) !important;
+    background:rgba(30,41,59,.72) !important;
+    color:#f8fafc !important;
+  }
+  .stbc-glass-dialog .stbc-label-menu{
+    border-color:rgba(255,255,255,.12) !important;
+    background:rgba(15,23,42,.96) !important;
+  }
+  .stbc-glass-dialog .stbc-form-actions .b3-button--cancel{
+    background:rgba(30,41,59,.82) !important;
+    color:#e2e8f0 !important;
+    border-color:rgba(255,255,255,.12) !important;
+  }
 }
