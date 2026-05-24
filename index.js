@@ -185,6 +185,9 @@
     onunload() {
       (this.stopPomodoroTimer(), this.stopStatusSyncTimer(), this.stopNowLineTimer(), this.stopReminderTimer());
     }
+    async uninstall() {
+      await this.removeData(a);
+    }
     async onLayoutReady() {
       const t = await this.loadData(a).catch(() => {});
       this.config = { ...o, ...(t || {}) };
