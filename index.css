@@ -1754,22 +1754,51 @@
 }
 .stbc-glass-dialog .b3-dialog__body{
   max-height:calc(100vh - 68px) !important;
-  overflow:auto !important;
+  overflow:hidden !important;
   scrollbar-gutter:stable;
 }
 .stbc-glass-dialog .stbc-form{
   max-height:calc(100vh - 76px) !important;
   overflow:auto !important;
   box-sizing:border-box;
+  scrollbar-width:none;
+}
+.stbc-glass-dialog .stbc-form::-webkit-scrollbar{width:0;height:0}
+.stbc-glass-dialog .stbc-form-time-row{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:12px !important;
+}
+.stbc-glass-dialog .stbc-form-time-row label{
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+}
+.stbc-glass-dialog .stbc-form-time-row span{
+  color:rgba(15,23,42,.78);
+  font-size:13px;
+  font-weight:500;
+}
+.stbc-glass-dialog .stbc-form-duration-row{
+  grid-template-columns:68px minmax(0,1fr) !important;
+  align-items:center !important;
+}
+.stbc-glass-dialog .stbc-form-duration-value{
+  min-height:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  font-size:13px !important;
 }
 .stbc-glass-dialog .stbc-form-actions{
-  position:sticky;
-  bottom:0;
-  margin:4px -2px -2px;
-  padding:10px 2px 2px;
-  background:linear-gradient(to bottom, transparent, rgba(255,255,255,.84) 28%, rgba(255,255,255,.92));
-  -webkit-backdrop-filter:blur(16px) saturate(118%);
-  backdrop-filter:blur(16px) saturate(118%);
+  position:static;
+  margin:0;
+  padding-top:8px;
+  background:transparent;
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
   z-index:3;
 }
 @media (max-height: 720px){
