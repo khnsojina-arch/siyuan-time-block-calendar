@@ -2,3 +2,5 @@
 node_modules/
 *.log
 *.tmp
+package.zip
+__package_check/

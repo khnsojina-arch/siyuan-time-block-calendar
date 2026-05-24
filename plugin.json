@@ -1,8 +1,8 @@
 {
   "name": "siyuan-time-block-calendar",
-  "author": "Codex",
-  "url": "",
-  "version": "0.5.6-clean",
+  "author": "khnsojina-arch",
+  "url": "https://github.com/khnsojina-arch/siyuan-time-block-calendar",
+  "version": "0.5.6",
   "minAppVersion": "3.1.0",
   "backends": [
     "all"
@@ -16,8 +16,8 @@
     "zh_CN": "时间块日历"
   },
   "description": {
-    "default": "A Notion Calendar style time-block calendar for SiYuan, with reminders, desktop system notifications, JSON backup import/export, a compact Pomodoro timer, and iHour .ihbak to JSON export in settings.",
-    "zh_CN": "Notion Calendar 风格的时间块日历，支持周/三天/月/年视图、提醒、电脑系统通知、JSON 备份导入导出、侧边栏番茄钟，以及设置中的 iHour .ihbak 解析导出 JSON。"
+    "default": "A Notion Calendar style time-block calendar for SiYuan, with reminders, desktop notifications, JSON backup import/export, a compact Pomodoro timer, and iHour .ihbak export.",
+    "zh_CN": "Notion Calendar 风格的时间块日历，支持周、三天、月、年视图，提醒、电脑系统通知、JSON 备份导入导出、侧栏番茄钟，以及 iHour .ihbak 解析导出 JSON。"
   },
   "readme": {
     "default": "README.md",
@@ -28,10 +28,11 @@
     "planner",
     "time-block",
     "daily-note",
+    "pomodoro",
     "日历",
     "时间块",
     "计划",
-    "SiYuan",
+    "思源",
     "待办"
   ]
 }
