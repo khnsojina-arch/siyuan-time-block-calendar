@@ -41,6 +41,7 @@
       desktopNotificationEnabled: true,
       desktopNotificationMissedEnabled: false,
       tableReminderFiredMap: {},
+      pomodoroVisible: true,
       pomodoroRecords: [],
     },
     r = [
@@ -132,6 +133,8 @@
         (this.pomodoroStartedAt = 0),
         (this.pomodoroSessionStartedAt = 0),
         (this.pomodoroTimer = void 0),
+        (this.monthGoalQuery = ""),
+        (this.monthGoalStatus = "all"),
         (this.events = []),
         (this.tableWriteQueues = new Map()),
         (this.recentlyDeletedEventIds = new Map()),
@@ -177,6 +180,7 @@
             (this.settingsDraftConfig && (this.config = { ...this.config, ...this.settingsDraftConfig }),
               (this.settingsDraftConfig = void 0),
               this.saveData(a, this.config),
+              this.renderPomodoroPanel(),
               (0, n.showMessage)("时间块日历设置已保存"));
           },
         })),
@@ -209,6 +213,7 @@
           dailyRootHPath: this.config.dailyRootHPath,
           desktopNotificationEnabled: this.config.desktopNotificationEnabled,
           desktopNotificationMissedEnabled: this.config.desktopNotificationMissedEnabled,
+          pomodoroVisible: this.config.pomodoroVisible,
         })
       );
     }
@@ -236,10 +241,28 @@
         this.setting.addItem({
           title: "日记根路径",
           description:
-            "默认 /daily note，事件会写入 /daily note/YYYY/MM/YYYY-MM-DD。",
+            "默认 /daily note，事件会写入 /daily note/YYYY/MM/YYYY-MM-DD；也支持 {{now | date \"2006/2006-01\"}}、{{now | WeekdayCN}} 这类路径模板。",
           createActionElement: () => {
             const t = this.getSettingsDraftConfig();
             return ((t.dailyRootHPath = this.config.dailyRootHPath), (e.value = this.config.dailyRootHPath), e);
+          },
+        }));
+      const pomodoroToggle = document.createElement("label"),
+        pomodoroCheckbox = document.createElement("input");
+      ((pomodoroToggle.className = "stbc-setting-checkbox"),
+        (pomodoroCheckbox.type = "checkbox"),
+        (pomodoroCheckbox.checked = !1 !== this.config.pomodoroVisible),
+        pomodoroToggle.appendChild(pomodoroCheckbox),
+        pomodoroToggle.appendChild(document.createTextNode(" 显示左侧番茄钟小组件")),
+        pomodoroCheckbox.addEventListener("change", () => {
+          this.getSettingsDraftConfig().pomodoroVisible = pomodoroCheckbox.checked;
+        }),
+        this.setting.addItem({
+          title: "番茄钟小组件",
+          description: "关闭后左侧只保留小日历；开启后，超过 1 分钟的专注记录会显示在番茄钟下方，并可补充备注。",
+          createActionElement: () => {
+            const t = this.getSettingsDraftConfig();
+            return ((t.pomodoroVisible = this.config.pomodoroVisible), (pomodoroCheckbox.checked = !1 !== this.config.pomodoroVisible), pomodoroToggle);
           },
         }));
       const s = document.createElement("div"),
@@ -386,6 +409,8 @@
       return `\n      <div class="stbc-toolbar">\n        <div class="stbc-toolbar-title">${d(this.currentDate)}</div>\n        <select class="stbc-select" data-action="view">\n          <option value="week" ${"week" === this.viewMode ? "selected" : ""}>周</option>\n          <option value="month" ${"month" === this.viewMode ? "selected" : ""}>月</option>\n        </select>\n        <button class="stbc-button" data-action="today">今天</button>\n        <button class="stbc-button" data-action="prev">‹</button>\n        <button class="stbc-button" data-action="next">›</button>\n        <button class="stbc-button" data-action="refresh">刷新</button>\n      </div>\n      <div class="stbc-body">\n        <aside class="stbc-sidebar">\n          <div class="stbc-mini-month"></div>\n        </aside>\n        <main class="stbc-main"></main>\n        <aside class="stbc-inspector"></aside>\n      </div>\n    `;
     }
     getToolbarTitleV2() {
+      if ("goals" === this.viewMode)
+        return `${this.currentDate.getFullYear()}年${this.currentDate.getMonth() + 1}月目标`;
       return "year" === this.viewMode
         ? `${this.currentDate.getFullYear()}年`
         : "three" === this.viewMode
@@ -398,6 +423,7 @@
       <div class="stbc-toolbar">
         <div class="stbc-toolbar-title">${title}</div>
         <div class="stbc-toolbar-actions">
+          <button class="stbc-button stbc-goals-toggle ${"goals" === this.viewMode ? "is-active" : ""}" data-action="goals" type="button">本月目标</button>
           <select class="stbc-select" data-action="view" aria-label="切换视图">
             <option value="week" ${"week" === this.viewMode ? "selected" : ""}>周</option>
             <option value="three" ${"three" === this.viewMode ? "selected" : ""}>三天</option>
@@ -424,7 +450,9 @@
     `;
     }
     renderMainViewV2() {
+      this.rootElement?.classList.toggle("is-goals-view", "goals" === this.viewMode);
       this.rootElement?.querySelector(".stbc-calendar-panel")?.classList.remove("is-hidden");
+      if ("goals" === this.viewMode) return this.renderMonthGoalsV2();
       if ("week" === this.viewMode) return this.renderWeekV2();
       if ("three" === this.viewMode) return this.renderThreeDayV2();
       if ("year" === this.viewMode) return this.renderYearV2();
@@ -455,7 +483,7 @@
           .querySelector('[data-action="today"]')
           ?.addEventListener("click", () => {
             ((this.currentDate = new Date()),
-              (this.viewMode = "three" === this.viewMode ? "three" : "week"),
+              (this.viewMode = "goals" === this.viewMode ? "goals" : "three" === this.viewMode ? "three" : "week"),
               this.render());
           }),
         t
@@ -481,7 +509,7 @@
         t.querySelectorAll("[data-date]").forEach((t) => {
           t.addEventListener("click", () => {
             ((this.currentDate = new Date(`${t.dataset.date}T12:00:00`)),
-              (this.viewMode = "three" === this.viewMode ? "three" : "week"),
+              (this.viewMode = "goals" === this.viewMode ? "goals" : "three" === this.viewMode ? "three" : "week"),
               this.render());
           });
         }));
@@ -510,7 +538,7 @@
     }
     addPomodoroRecord(t = !0) {
       const e = Math.max(0, this.getPomodoroElapsedSeconds());
-      if (e < 5) return;
+      if (e <= 60) return null;
       const n = new Date(),
         s = this.pomodoroSessionStartedAt ? new Date(this.pomodoroSessionStartedAt) : new Date(n.getTime() - 1e3 * e),
         i = {
@@ -521,9 +549,33 @@
           startAt: g(s),
           endAt: g(n),
           completed: !!t,
+          note: "",
         };
       this.config.pomodoroRecords = [i, ...this.getPomodoroRecords()].slice(0, 20);
       this.savePomodoroRecords();
+      return i;
+    }
+    openPomodoroRecordNoteDialog(t) {
+      const e = this.getPomodoroRecords().find((e) => String(e?.id || "") === String(t || ""));
+      if (!e) return;
+      const s = new n.Dialog({
+          title: "记录本次专注",
+          content: `\n        <div class="stbc-form stbc-pomodoro-note-form">\n          <div class="stbc-pomodoro-note-summary">${y(this.formatPomodoroTime(Number(e.durationSeconds || 0)))} · ${y(this.formatPomodoroRecordDate(e.startAt))}</div>\n          <label class="stbc-form-row stbc-form-note-row">\n            <span>备注：</span>\n            <textarea class="b3-text-field stbc-pomodoro-note-input" rows="4" placeholder="这段时间里做了什么？">${y(e.note || "")}</textarea>\n          </label>\n          <div class="stbc-form-actions">\n            <button class="b3-button b3-button--cancel stbc-pomodoro-note-cancel" type="button">稍后再写</button>\n            <button class="b3-button b3-button--text stbc-pomodoro-note-submit" type="button">保存备注</button>\n          </div>\n        </div>\n      `,
+          width: "430px",
+        }),
+        a = s.element,
+        i = a.querySelector(".stbc-pomodoro-note-input");
+      a?.classList.add("stbc-glass-dialog");
+      a?.querySelector(".b3-dialog__close")?.addEventListener("click", (t) => { t.preventDefault(); t.stopPropagation(); s.destroy(); }, { capture: true });
+      (i?.focus(),
+        a.querySelector(".stbc-pomodoro-note-cancel")?.addEventListener("click", () => s.destroy()),
+        a.querySelector(".stbc-pomodoro-note-submit")?.addEventListener("click", () => {
+          const note = String(i?.value || "").trim();
+          this.config.pomodoroRecords = this.getPomodoroRecords().map((e) =>
+            String(e?.id || "") === String(t || "") ? { ...e, note } : e,
+          );
+          (this.savePomodoroRecords(), s.destroy(), this.renderPomodoroPanel());
+        }));
     }
     deletePomodoroRecord(t) {
       const e = String(t || "");
@@ -556,6 +608,7 @@
               <div class="stbc-pomodoro-record-main">
                 <span class="stbc-pomodoro-record-time">${y(this.formatPomodoroRecordDate(e))} - ${Number.isNaN(n.getTime()) ? "--:--" : f(n)}</span>
                 <span class="stbc-pomodoro-record-meta">${this.formatPomodoroTime(s)} · ${a}</span>
+                ${t.note ? `<span class="stbc-pomodoro-record-note">${y(t.note)}</span>` : ""}
               </div>
               <button class="stbc-pomodoro-record-delete" data-pomodoro-delete="${y(String(t.id || ""))}" type="button" title="删除这条记录" aria-label="删除这条记录">×</button>
             </div>`;
@@ -571,7 +624,8 @@
       t && (t.textContent = this.formatPomodoroTime(this.getPomodoroSeconds()));
       if ("countdown" === this.pomodoroMode && this.pomodoroRunning && this.getPomodoroSeconds() <= 0) {
         const t = Math.max(1, Number(this.pomodoroMinutes || 25)) * 60;
-        ((this.pomodoroElapsed = t), (this.pomodoroRunning = !1), this.stopPomodoroTimer(), this.addPomodoroRecord(!0), (this.pomodoroSessionStartedAt = 0), this.renderPomodoroPanel(), (0, n.showMessage)("番茄钟结束，已记录一次专注"));
+        const e = ((this.pomodoroElapsed = t), (this.pomodoroRunning = !1), this.stopPomodoroTimer(), this.addPomodoroRecord(!0));
+        ((this.pomodoroSessionStartedAt = 0), this.renderPomodoroPanel(), e && this.openPomodoroRecordNoteDialog(e.id), (0, n.showMessage)(e ? "番茄钟结束，已记录一次专注" : "番茄钟结束，少于 1 分钟未记录"));
       }
     }
     startPomodoroTimer() {
@@ -587,6 +641,11 @@
     renderPomodoroPanel() {
       const t = this.rootElement?.querySelector(".stbc-pomodoro-panel");
       if (!t) return;
+      if (!1 === this.config.pomodoroVisible) {
+        (this.stopPomodoroTimer(), (this.pomodoroRunning = !1), (this.pomodoroElapsed = 0), (this.pomodoroSessionStartedAt = 0), (t.innerHTML = ""), (t.hidden = !0));
+        return;
+      }
+      t.hidden = !1;
       const e = this.getPomodoroSeconds(),
         n = this.pomodoroRunning ? "暂停" : "开始";
       t.innerHTML = `
@@ -1414,6 +1473,144 @@
           });
         }));
     }
+    eventOverlapsDate(event, date) {
+      if (!event?.allDay) return !1;
+      const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0),
+        end = m(start, 1);
+      return event.start < end && event.end > start;
+    }
+    eventOverlapsRange(event, start, end) {
+      return Boolean(event?.allDay && event.start < end && event.end > start);
+    }
+    getMonthGoalSearchText(event) {
+      return `${event.title || ""} ${event.label || ""} ${event.note || ""}`.toLowerCase();
+    }
+    getFilteredMonthGoalsForDate(date) {
+      const query = String(this.monthGoalQuery || "").trim().toLowerCase(),
+        status = this.monthGoalStatus || "all";
+      return (this.events || [])
+        .filter((event) => this.eventOverlapsDate(event, date))
+        .filter((event) => "done" === status ? "done" === event.status : "todo" === status ? "done" !== event.status : !0)
+        .filter((event) => !query || this.getMonthGoalSearchText(event).includes(query))
+        .sort((a, b) => a.start.getTime() - b.start.getTime() || String(a.title || "").localeCompare(String(b.title || "")));
+    }
+    renderMonthGoalsV2() {
+      const target = this.rootElement?.querySelector(".stbc-calendar-panel") || this.rootElement?.querySelector(".stbc-main");
+      if (!target) return;
+      const monthStart = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1, 0, 0, 0, 0),
+        monthEnd = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 1, 0, 0, 0, 0),
+        gridStart = b(monthStart),
+        today = p(new Date()),
+        selected = p(this.currentDate),
+        query = String(this.monthGoalQuery || ""),
+        status = this.monthGoalStatus || "all",
+        monthGoals = (this.events || []).filter((event) => this.eventOverlapsRange(event, monthStart, monthEnd)),
+        visibleMonthGoals = monthGoals
+          .filter((event) => "done" === status ? "done" === event.status : "todo" === status ? "done" !== event.status : !0)
+          .filter((event) => !query.trim() || this.getMonthGoalSearchText(event).includes(query.trim().toLowerCase())),
+        doneCount = monthGoals.filter((event) => "done" === event.status).length,
+        weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+      target.innerHTML = `
+        <section class="stbc-goals-view">
+          <div class="stbc-goals-head">
+            <label class="stbc-goals-search">
+              <span>🔍</span>
+              <input class="b3-text-field stbc-goals-search-input" type="search" value="${y(query)}" placeholder="搜索标题/备注/标签" />
+            </label>
+            <div class="stbc-goals-filters" role="group" aria-label="目标状态筛选">
+              <button class="${status === "all" ? "is-active" : ""}" data-goal-status="all" type="button">全部</button>
+              <button class="${status === "todo" ? "is-active" : ""}" data-goal-status="todo" type="button">未完成</button>
+              <button class="${status === "done" ? "is-active" : ""}" data-goal-status="done" type="button">已完成</button>
+            </div>
+            <div class="stbc-goals-progress">本月目标：${doneCount}/${monthGoals.length} 已完成${visibleMonthGoals.length !== monthGoals.length ? ` · 当前显示 ${visibleMonthGoals.length}` : ""}</div>
+          </div>
+          <div class="stbc-goals-weekdays">
+            ${weekdayLabels.map((label) => `<span>${label}</span>`).join("")}
+          </div>
+          <div class="stbc-goals-grid">
+            ${Array.from({ length: 42 }, (_, index) => {
+              const date = m(gridStart, index),
+                dateKey = p(date),
+                goals = this.getFilteredMonthGoalsForDate(date),
+                outside = date.getMonth() !== this.currentDate.getMonth();
+              return `
+                <div class="stbc-goal-day ${outside ? "is-outside" : ""} ${dateKey === today ? "is-today" : ""} ${dateKey === selected ? "is-selected" : ""}" data-date="${dateKey}">
+                  <div class="stbc-goal-day-head">
+                    <span>${date.getDate()}</span>
+                    <button class="stbc-goal-add" data-action="new-goal" data-date="${dateKey}" type="button" title="新建本月目标" aria-label="新建本月目标">+</button>
+                  </div>
+                  <div class="stbc-goal-list">
+                    ${goals
+                      .map((event) => {
+                        const color = l(event.color),
+                          done = "done" === event.status;
+                        return `
+                          <div class="stbc-goal-card ${done ? "is-done" : ""} ${event.id === this.selectedEventId ? "is-selected" : ""}" data-id="${y(event.id)}" tabindex="0" title="${y(this.getEventHoverText(event))}" style="--stbc-event-color:${color.value};--stbc-event-bg:${color.bg};--stbc-event-text:${color.text};">
+                            <button class="stbc-goal-status ${done ? "is-done" : ""}" data-action="toggle-status" type="button" title="${done ? "标记未完成" : "标记完成"}" aria-label="${done ? "标记未完成" : "标记完成"}">${done ? "✓" : ""}</button>
+                            <span class="stbc-goal-title">${y(event.title)}</span>
+                          </div>
+                        `;
+                      })
+                      .join("")}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </section>
+      `;
+      const searchInput = target.querySelector(".stbc-goals-search-input");
+      searchInput?.addEventListener("input", (event) => {
+        const input = event.currentTarget;
+        this.monthGoalQuery = input.value || "";
+        this.renderMonthGoalsV2();
+        const nextInput = this.rootElement?.querySelector(".stbc-goals-search-input"),
+          position = this.monthGoalQuery.length;
+        nextInput?.focus();
+        nextInput?.setSelectionRange?.(position, position);
+      });
+      target.querySelectorAll("[data-goal-status]").forEach((button) => {
+        button.addEventListener("click", () => {
+          this.monthGoalStatus = button.dataset.goalStatus || "all";
+          this.renderMonthGoalsV2();
+        });
+      });
+      target.querySelectorAll(".stbc-goal-card").forEach((card) => {
+        card.addEventListener("click", () => this.selectEvent(card.dataset.id));
+        card.addEventListener("keydown", (event) => {
+          if ("Enter" !== event.key && " " !== event.key) return;
+          event.preventDefault();
+          this.selectEvent(card.dataset.id);
+        });
+        card.addEventListener("contextmenu", (event) => {
+          const goal = this.events.find((item) => item.id === card.dataset.id);
+          goal && this.openEventMenu(event, goal);
+        });
+        card
+          .querySelector('[data-action="toggle-status"]')
+          ?.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const goal = this.events.find((item) => item.id === card.dataset.id);
+            goal && (await this.updateEventStatus(goal.id, "done" === goal.status ? "todo" : "done"));
+          });
+      });
+      target.querySelectorAll('[data-action="new-goal"]').forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const dateKey = button.dataset.date || p(new Date());
+          await this.openCreateAllDayDialog(dateKey, dateKey);
+        });
+      });
+      target.querySelectorAll(".stbc-goal-day").forEach((day) => {
+        day.addEventListener("dblclick", async (event) => {
+          if (event.target?.closest?.(".stbc-goal-card, button, input")) return;
+          const dateKey = day.dataset.date || p(new Date());
+          await this.openCreateAllDayDialog(dateKey, dateKey);
+        });
+      });
+    }
     renderYearV2() {
       const t = this.rootElement?.querySelector(".stbc-calendar-panel") || this.rootElement?.querySelector(".stbc-main");
       if (!t) return;
@@ -1503,7 +1700,7 @@
         ((this.selectedEventId = t),
         this.rootElement
           ?.querySelectorAll(
-            ".stbc-event.is-selected, .stbc-month-event.is-selected, .stbc-year-event.is-selected",
+            ".stbc-event.is-selected, .stbc-month-event.is-selected, .stbc-year-event.is-selected, .stbc-goal-card.is-selected",
           )
           .forEach((t) => {
             t.classList.remove("is-selected");
@@ -1571,7 +1768,7 @@
             ((this.selectedEventId = void 0),
               this.rootElement
                 ?.querySelectorAll(
-                  ".stbc-event.is-selected, .stbc-month-event.is-selected, .stbc-year-event.is-selected",
+                  ".stbc-event.is-selected, .stbc-month-event.is-selected, .stbc-year-event.is-selected, .stbc-goal-card.is-selected",
                 )
                 .forEach((t) => {
                   t.classList.remove("is-selected");
@@ -3288,7 +3485,7 @@
     sanitizeImportedConfig(t) {
       const e = { ...this.config };
       if (!t || "object" != typeof t) return e;
-      const n = ["notebookId", "dailyRootHPath", "dayStartHour", "dayEndHour", "slotMinutes", "desktopNotificationEnabled", "desktopNotificationMissedEnabled"];
+      const n = ["notebookId", "dailyRootHPath", "dayStartHour", "dayEndHour", "slotMinutes", "desktopNotificationEnabled", "desktopNotificationMissedEnabled", "pomodoroVisible"];
       n.forEach((n) => {
         Object.prototype.hasOwnProperty.call(t, n) && (e[n] = t[n]);
       });
@@ -3627,6 +3824,11 @@
           ?.querySelector('[data-action="today"]')
           ?.addEventListener("click", () => {
             ((this.currentDate = new Date()), this.render());
+          }),
+        this.rootElement
+          ?.querySelector('[data-action="goals"]')
+          ?.addEventListener("click", () => {
+            ((this.viewMode = "goals" === this.viewMode ? "month" : "goals"), this.render());
           }),
         this.rootElement
           ?.querySelector('[data-action="prev"]')
@@ -4353,28 +4555,98 @@
       };
       await u("/api/attr/setBlockAttrs", { id: t, attrs: l });
     }
+    getWeekdayCN(t) {
+      return ["日", "一", "二", "三", "四", "五", "六"][t.getDay()] || "";
+    }
+    formatDateLayout(t, e) {
+      const n = {
+        yyyy: String(t.getFullYear()),
+        YYYY: String(t.getFullYear()),
+        yy: v(t.getFullYear() % 100),
+        YY: v(t.getFullYear() % 100),
+        MM: v(t.getMonth() + 1),
+        M: String(t.getMonth() + 1),
+        dd: v(t.getDate()),
+        DD: v(t.getDate()),
+        d: String(t.getDate()),
+        D: String(t.getDate()),
+        HH: v(t.getHours()),
+        H: String(t.getHours()),
+        mm: v(t.getMinutes()),
+        m: String(t.getMinutes()),
+        ss: v(t.getSeconds()),
+        s: String(t.getSeconds()),
+      };
+      return String(e || "")
+        .replace(/2006/g, n.yyyy)
+        .replace(/06/g, n.yy)
+        .replace(/01/g, n.MM)
+        .replace(/02/g, n.dd)
+        .replace(/15/g, n.HH)
+        .replace(/04/g, n.mm)
+        .replace(/05/g, n.ss)
+        .replace(/yyyy|YYYY|yy|YY|MM|M|dd|DD|d|D|HH|H|mm|m|ss|s/g, (t) => n[t] ?? t);
+    }
+    formatPathDateTokens(t, e) {
+      const n = {
+        yyyy: String(t.getFullYear()),
+        YYYY: String(t.getFullYear()),
+        yy: v(t.getFullYear() % 100),
+        YY: v(t.getFullYear() % 100),
+        MM: v(t.getMonth() + 1),
+        dd: v(t.getDate()),
+        DD: v(t.getDate()),
+        HH: v(t.getHours()),
+        mm: v(t.getMinutes()),
+        ss: v(t.getSeconds()),
+      };
+      return String(e || "").replace(/yyyy|YYYY|yy|YY|MM|dd|DD|HH|mm|ss/g, (t) => n[t] ?? t);
+    }
+    renderDailyPathTemplate(t, e) {
+      const n = String(t || "")
+        .replace(/\{\{\s*now\s*\|\s*date\s+["']([^"']+)["']\s*\}\}/gi, (t, n) => this.formatDateLayout(e, n))
+        .replace(/\{\{\s*now\s*\|\s*WeekdayCN\s*\}\}/gi, () => this.getWeekdayCN(e))
+        .replace(/\{\{\s*now\s*\|\s*weekdayCN\s*\}\}/gi, () => this.getWeekdayCN(e))
+        .replace(/\{\{\s*date\s+["']([^"']+)["']\s*\}\}/gi, (t, n) => this.formatDateLayout(e, n))
+        .replace(/\{\{\s*WeekdayCN\s*\}\}/gi, () => this.getWeekdayCN(e));
+      return this.formatPathDateTokens(e, n);
+    }
+    normalizeDocHPath(t) {
+      const e = String(t || "/daily note")
+        .replace(/\\/g, "/")
+        .replace(/\/{2,}/g, "/")
+        .replace(/\/+$/g, "");
+      return e.startsWith("/") ? e || "/daily note" : `/${e}`;
+    }
+    getDailyDocHPath(t) {
+      const e = new Date(`${t}T12:00:00`),
+        n = String(this.config.dailyRootHPath || "/daily note").trim() || "/daily note",
+        s = /\{\{|\bYYYY\b|\byyyy\b|\bYY\b|\byy\b|\bMM\b|\bDD\b|\bdd\b/.test(n);
+      if (s) return this.normalizeDocHPath(this.renderDailyPathTemplate(n, e));
+      const [a, i] = t.split("-");
+      return this.normalizeDocHPath(`${n}/${a}/${i}/${t}`);
+    }
     async ensureDailyDoc(t) {
-      const [e, n] = t.split("-"),
-        s = `${this.config.dailyRootHPath}/${e}/${n}/${t}`,
-        a = await this.findDocByHPath(s);
-      if (a) return a;
-      const i = `${s}.sy`,
-        o = await u("/api/filetree/createDocWithMd", {
+      const e = this.getDailyDocHPath(t),
+        n = await this.findDocByHPath(e);
+      if (n) return n;
+      const s = `${e}.sy`,
+        a = await u("/api/filetree/createDocWithMd", {
           notebook: this.config.notebookId,
-          path: i,
+          path: s,
           markdown: `# ${t}\n\n`,
         }).catch(async () => {
-          const t = await this.findDocByHPath(s);
-          if (t) return t;
-          throw new Error(`无法创建日记文档：${s}`);
+          const n = await this.findDocByHPath(e);
+          if (n) return n;
+          throw new Error(`无法创建日记文档：${e}`);
         }),
-        r = this.extractDocId(o);
-      if (!r) {
-        const t = await this.findDocByHPath(s);
-        if (t) return t;
-        throw new Error(`无法创建日记文档：${s}`);
+        i = this.extractDocId(a);
+      if (!i) {
+        const n = await this.findDocByHPath(e);
+        if (n) return n;
+        throw new Error(`无法创建日记文档：${e}`);
       }
-      return r;
+      return i;
     }
     async findDocByHPath(t) {
       const e = t.replace(/'/g, "''"),
