@@ -2,7 +2,7 @@
   "name": "siyuan-time-block-calendar",
   "author": "khnsojina-arch",
   "url": "https://github.com/khnsojina-arch/siyuan-time-block-calendar",
-  "version": "0.5.14",
+  "version": "0.5.15",
   "minAppVersion": "3.1.0",
   "backends": [
     "all"

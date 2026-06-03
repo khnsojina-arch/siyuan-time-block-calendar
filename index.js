@@ -364,6 +364,116 @@
     isMobileFrontend() {
       return String(n.getFrontend?.() || "").endsWith("mobile");
     }
+    prefersReducedMotion() {
+      return Boolean(
+        "undefined" != typeof window &&
+          window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+      );
+    }
+    getGsap() {
+      const t = "undefined" != typeof window ? window.gsap : void 0;
+      return t && "function" == typeof t.fromTo && "function" == typeof t.to
+        ? t
+        : void 0;
+    }
+    getAnimationTargets(t) {
+      return (t && "number" == typeof t.length && !t.nodeType
+        ? Array.from(t)
+        : [t]
+      ).filter((t) => t && 1 === t.nodeType);
+    }
+    animationTransformFromVars(t = {}) {
+      const e = [];
+      return (
+        null != t.x && e.push(`translateX(${Number(t.x) || 0}px)`),
+        null != t.y && e.push(`translateY(${Number(t.y) || 0}px)`),
+        null != t.scale && e.push(`scale(${Number(t.scale) || 1})`),
+        e.length ? e.join(" ") : "none"
+      );
+    }
+    animateFromTo(t, e, n = {}) {
+      const s = this.getAnimationTargets(t);
+      if (!s.length || this.prefersReducedMotion()) return;
+      const a = this.getGsap();
+      if (a)
+        return void a.fromTo(s, e, {
+          duration: 0.22,
+          ease: "power2.out",
+          overwrite: "auto",
+          ...n,
+        });
+      const i = 1e3 * Number(n.duration || 0.22),
+        o = Number(n.stagger || 0),
+        r = this.animationTransformFromVars(e),
+        c = this.animationTransformFromVars(n);
+      s.forEach((t, s) => {
+        const a = t.animate?.(
+          [
+            {
+              opacity: null != e.autoAlpha ? e.autoAlpha : null != e.opacity ? e.opacity : 1,
+              transform: r,
+            },
+            {
+              opacity: null != n.autoAlpha ? n.autoAlpha : null != n.opacity ? n.opacity : 1,
+              transform: c,
+            },
+          ],
+          {
+            duration: i,
+            delay: 1e3 * o * s,
+            easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+            fill: "both",
+          },
+        );
+        a &&
+          (a.onfinish = () => {
+            ((t.style.opacity = ""), (t.style.transform = ""));
+          });
+      });
+    }
+    animateTo(t, e = {}) {
+      const n = this.getAnimationTargets(t);
+      if (!n.length || this.prefersReducedMotion()) return;
+      const s = this.getGsap();
+      if (s)
+        return void s.to(n, {
+          duration: 0.18,
+          ease: "power2.out",
+          overwrite: "auto",
+          ...e,
+        });
+      this.animateFromTo(n, { scale: 1 }, { duration: e.duration || 0.18, scale: e.scale || 1 });
+    }
+    animateCalendarEntrance() {
+      const t = this.rootElement?.querySelector(".stbc-calendar-panel");
+      if (!t) return;
+      this.animateFromTo(t.firstElementChild, { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: 0.2 });
+      const e = Array.from(t.querySelectorAll(".stbc-event")).slice(0, 36);
+      e.length &&
+        this.animateFromTo(
+          e,
+          { autoAlpha: 0, y: 22, scale: 0.92 },
+          { autoAlpha: 1, y: 0, scale: 1, duration: 0.42, ease: "back.out(1.25)", stagger: 0.026 },
+        );
+      const n = Array.from(
+        t.querySelectorAll(
+          ".stbc-all-day-event, .stbc-month-event, .stbc-goal-card, .stbc-year-month",
+        ),
+      ).slice(0, 48);
+      n.length &&
+        this.animateFromTo(
+          n,
+          { autoAlpha: 0, y: 6, scale: 0.985 },
+          { autoAlpha: 1, y: 0, scale: 1, duration: 0.22, stagger: 0.012 },
+        );
+    }
+    animateInspectorEntrance(t) {
+      this.animateFromTo(t, { autoAlpha: 0, x: 12 }, { autoAlpha: 1, x: 0, duration: 0.2 });
+    }
+    animateSelectedEvent(t) {
+      const e = this.rootElement?.querySelectorAll(`[data-id="${t}"]`);
+      this.animateTo(e, { scale: 1.015, duration: 0.12, yoyo: true, repeat: 1 });
+    }
     openCalendarTab() {
       if (this.isMobileFrontend()) return this.openCalendarDialog();
       (0, n.openTab)({
@@ -452,11 +562,16 @@
     renderMainViewV2() {
       this.rootElement?.classList.toggle("is-goals-view", "goals" === this.viewMode);
       this.rootElement?.querySelector(".stbc-calendar-panel")?.classList.remove("is-hidden");
-      if ("goals" === this.viewMode) return this.renderMonthGoalsV2();
-      if ("week" === this.viewMode) return this.renderWeekV2();
-      if ("three" === this.viewMode) return this.renderThreeDayV2();
-      if ("year" === this.viewMode) return this.renderYearV2();
-      return this.renderMonthV2();
+      ("goals" === this.viewMode
+        ? this.renderMonthGoalsV2()
+        : "week" === this.viewMode
+          ? this.renderWeekV2()
+          : "three" === this.viewMode
+            ? this.renderThreeDayV2()
+            : "year" === this.viewMode
+              ? this.renderYearV2()
+              : this.renderMonthV2(),
+        this.animateCalendarEntrance());
     }
     renderMiniMonthV2() {
       const t = this.rootElement?.querySelector(".stbc-mini-month");
@@ -1696,8 +1811,8 @@
       });
     }
     selectEvent(t) {
-      t &&
-        ((this.selectedEventId = t),
+      if (!t) return;
+      ((this.selectedEventId = t),
         this.rootElement
           ?.querySelectorAll(
             ".stbc-event.is-selected, .stbc-month-event.is-selected, .stbc-year-event.is-selected, .stbc-goal-card.is-selected",
@@ -1708,7 +1823,8 @@
         this.rootElement?.querySelectorAll(`[data-id="${t}"]`).forEach((t) => {
           t.classList.add("is-selected");
         }),
-        this.renderInspector());
+        this.renderInspector(),
+        this.animateSelectedEvent(t));
     }
     renderInspector() {
       const t = this.rootElement?.querySelector(".stbc-inspector"),
@@ -1733,6 +1849,7 @@
         </label>
         <div class="stbc-inspector-actions">\n          <button class="b3-button b3-button--cancel" data-action="inspector-reset" type="button">重置</button>\n          <button class="b3-button b3-button--text" data-action="inspector-save" type="button">保存修改</button>\n        </div>\n      </div>\n    `),
         this.bindLabelPicker(t),
+        this.animateInspectorEntrance(t.querySelector(".stbc-inspector-card")),
         (() => {
           const editGrid = t.querySelector(".stbc-inspector-edit-grid"),
             durationRow = document.createElement("div"),
@@ -4115,9 +4232,10 @@
       const a = 60 * (this.config.dayEndHour - this.config.dayStartHour),
         o = 60 * (t.getHours() - this.config.dayStartHour) + t.getMinutes() + t.getSeconds() / 60;
       if (o < 0 || o > a) return;
-      const r = s.getBoundingClientRect(),
-        c = Math.max(1, r.height || s.clientHeight || a * i),
-        l = n.offsetTop + (o / a) * c,
+      const metrics = this.getDayColumnMetrics(s),
+        c = Math.max(1, gutter?.clientHeight || metrics.rect?.height || s.clientHeight || a * i),
+        timelineTop = Number.isFinite(gutter?.offsetTop) ? gutter.offsetTop : n.offsetTop,
+        l = timelineTop + (o / a) * c,
         d = document.createElement("div");
       ((d.className = "stbc-now-line stbc-now-line--full"),
         (d.style.top = `${l}px`),
@@ -4135,9 +4253,10 @@
       this.rootElement?.querySelectorAll(".stbc-now-line, .stbc-now-time--gutter").forEach((t) => t.remove());
       const t = () => this.updateNowLine();
       ("function" == typeof window.requestAnimationFrame
-        ? window.requestAnimationFrame(t)
+        ? window.requestAnimationFrame(() => window.requestAnimationFrame(t))
         : window.setTimeout(t, 0),
-        window.setTimeout(t, 120));
+        window.setTimeout(t, 120),
+        window.setTimeout(t, 360));
     }
     updateNowLine() {
       this.rootElement?.querySelectorAll(".stbc-now-line, .stbc-now-time--gutter").forEach((t) => t.remove());
@@ -4145,10 +4264,10 @@
     }
     startNowLineTimer() {
       this.stopNowLineTimer();
-      const t = () => this.updateNowLine();
-      (this.updateNowLine(),
+      const t = () => this.queueNowLineUpdate();
+      (this.queueNowLineUpdate(),
         (this.nowLineTimer = window.setInterval(t, 15000)),
-        (this.nowLineWakeHandler = () => this.updateNowLine()),
+        (this.nowLineWakeHandler = () => this.queueNowLineUpdate()),
         window.addEventListener("focus", this.nowLineWakeHandler),
         window.addEventListener("resize", this.nowLineWakeHandler),
         document.addEventListener("visibilitychange", this.nowLineWakeHandler));
