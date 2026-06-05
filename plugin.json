@@ -2,7 +2,7 @@
   "name": "siyuan-time-block-calendar",
   "author": "khnsojina-arch",
   "url": "https://github.com/khnsojina-arch/siyuan-time-block-calendar",
-  "version": "0.5.15",
+  "version": "0.5.19",
   "minAppVersion": "3.1.0",
   "backends": [
     "all"
@@ -12,12 +12,12 @@
   ],
   "disabledInPublish": true,
   "displayName": {
-    "default": "Time Block Calendar",
-    "zh_CN": "时间块日历｜日程规划、时间管理、番茄钟与提醒"
+    "default": "AI Time Block Calendar",
+    "zh_CN": "AI 时间块日历｜AI 日程规划、时间管理、番茄钟与提醒"
   },
   "description": {
-    "default": "A Notion Calendar style time-block calendar for SiYuan, supporting week, three-day, month and year views, reminders, Pomodoro, task planning, JSON import/export, study plans and review schedules.",
-    "zh_CN": "一个面向思源笔记的时间块日历插件，支持周视图、三天视图、月视图、年视图、提醒、番茄钟、JSON 导入导出，帮助你完成日程规划、时间管理、学习计划、复习计划和任务安排。"
+    "default": "An AI-powered time-block calendar for SiYuan, supporting natural-language schedule planning, AI time-block creation, countdown days, reminders, Pomodoro, JSON import/export, study plans and review schedules.",
+    "zh_CN": "一个面向思源笔记的 AI 时间块日历插件，支持自然语言创建时间块、AI 日程规划、倒数日、正向日、纪念日、提醒、番茄钟、JSON 导入导出，帮助你完成学习计划、复习计划和任务安排。"
   },
   "readme": {
     "default": "README.md"
@@ -44,6 +44,13 @@
     "月视图",
     "年视图",
     "学习计划",
-    "复习计划"
+    "复习计划",
+    "ai",
+    "AI",
+    "AI日程规划",
+    "AI时间块",
+    "自然语言",
+    "倒数日",
+    "正向日"
   ]
 }

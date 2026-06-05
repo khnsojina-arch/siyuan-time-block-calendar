@@ -20,6 +20,7 @@
   const n = require("siyuan"),
     s = "time_block_calendar_tab",
     a = "time-block-calendar-config",
+    IMPORTANT_DAYS_STORAGE_NAME = "time-block-calendar-important-days",
     i = 56 / 60,
     o = {
       notebookId: "20260501173234-rjjfak4",
@@ -43,6 +44,14 @@
       tableReminderFiredMap: {},
       pomodoroVisible: true,
       pomodoroRecords: [],
+      aiEnabled: false,
+      aiProvider: "openai-compatible",
+      aiBaseURL: "",
+      aiApiKey: "",
+      aiModel: "deepseek-chat",
+      aiTemperature: 0.1,
+      aiMaxTokens: 2000,
+      aiTimeoutMs: 30000,
     },
     r = [
       { name: "天空蓝", value: "#38bdf8", bg: "#e0f7ff", text: "#075985" },
@@ -126,6 +135,7 @@
         (this.config = o),
         (this.currentDate = new Date()),
         (this.viewMode = "week"),
+        (this.lastCalendarViewMode = "week"),
         (this.pomodoroMode = "countdown"),
         (this.pomodoroMinutes = 25),
         (this.pomodoroElapsed = 0),
@@ -143,6 +153,9 @@
         (this.nowLineTimer = void 0),
         (this.reminderTimer = void 0),
         (this.settingsDraftConfig = void 0),
+        (this.importantDaysState = this.defaultImportantDaysState()),
+        (this.aiDialogOpen = !1),
+        (this.aiPreviewResult = void 0),
         (this.reminderBusy = !1),
         (this.reminderNotifiedInSession = new Set()));
     }
@@ -214,6 +227,14 @@
           desktopNotificationEnabled: this.config.desktopNotificationEnabled,
           desktopNotificationMissedEnabled: this.config.desktopNotificationMissedEnabled,
           pomodoroVisible: this.config.pomodoroVisible,
+          aiEnabled: Boolean(this.config.aiEnabled),
+          aiProvider: this.config.aiProvider || "openai-compatible",
+          aiBaseURL: this.config.aiBaseURL || "",
+          aiApiKey: this.config.aiApiKey || "",
+          aiModel: this.config.aiModel || "deepseek-chat",
+          aiTemperature: Number(this.config.aiTemperature ?? 0.1),
+          aiMaxTokens: Number(this.config.aiMaxTokens || 2000),
+          aiTimeoutMs: Number(this.config.aiTimeoutMs || 30000),
         })
       );
     }
@@ -322,44 +343,138 @@
             return ((t.desktopNotificationMissedEnabled = this.config.desktopNotificationMissedEnabled), (c.checked = !0 === this.config.desktopNotificationMissedEnabled), r);
           },
         }));
-      const l = document.createElement("div"),
-        d = document.createElement("input"),
-        u = document.createElement("button"),
-        h = document.createElement("div");
-      ((l.className = "stbc-setting-ihour-export"),
-        (d.className = "b3-text-field fn__block stbc-setting-ihour-input"),
-        (d.type = "file"),
-        (d.accept = ".ihbak,.json,application/json,text/plain"),
-        (u.className = "b3-button b3-button--outline"),
-        (u.type = "button"),
-        (u.textContent = "解析 .ihbak 并导出 JSON"),
-        (h.className = "stbc-setting-help"),
-        (h.textContent = "只解析 iHour 备份并下载 JSON，不写入思源、不生成专注记录。"),
-        l.appendChild(d),
-        l.appendChild(u),
-        l.appendChild(h),
-        u.addEventListener("click", async () => {
-          const t = d.files?.[0];
-          if (!t) return void (0, n.showMessage)("请先选择 iHour 导出的 .ihbak 文件");
-          const e = u.textContent || "解析 .ihbak 并导出 JSON";
-          ((u.disabled = !0), (u.textContent = "解析中..."), (h.textContent = "正在解析 iHour 备份..."));
-          try {
-            const e = await this.exportIHourBackupAsJson(t);
-            ((h.textContent = `已导出：${e.days} 天、${e.projects} 个项目、${e.records} 条记录，总计 ${e.totalHours} 小时。`),
-              (0, n.showMessage)(`iHour JSON 已导出：${e.records} 条记录，${e.totalHours} 小时`));
-          } catch (t) {
-            (console.error("export ihour json failed", t),
-              (h.textContent = `解析失败：${t instanceof Error ? t.message : String(t)}`),
-              (0, n.showMessage)(`iHour 解析失败：${t instanceof Error ? t.message : String(t)}`));
-          } finally {
-            ((u.disabled = !1), (u.textContent = e));
-          }
-        }),
-        this.setting.addItem({
-          title: "iHour 解析导出",
-          description: "选择 iHour 导出的 .ihbak 文件，直接导出给 AI 分析用的 JSON。",
-          createActionElement: () => l,
-        }));
+      const aiBox = document.createElement("div"),
+        aiToggleLabel = document.createElement("label"),
+        aiToggle = document.createElement("input"),
+        aiBaseURLInput = document.createElement("input"),
+        aiApiKeyInput = document.createElement("input"),
+        aiModelInput = document.createElement("input"),
+        aiTemperatureInput = document.createElement("input"),
+        aiMaxTokensInput = document.createElement("input"),
+        aiTimeoutInput = document.createElement("input"),
+        aiTestButton = document.createElement("button"),
+        aiHelp = document.createElement("div"),
+        makeAiField = (title, description, input) => {
+          const row = document.createElement("label"),
+            titleEl = document.createElement("span"),
+            descEl = document.createElement("small");
+          row.className = "stbc-ai-setting-row";
+          titleEl.className = "stbc-ai-setting-title";
+          descEl.className = "stbc-ai-setting-desc";
+          titleEl.textContent = title;
+          descEl.textContent = description;
+          input.setAttribute("aria-label", title);
+          row.appendChild(titleEl);
+          row.appendChild(descEl);
+          row.appendChild(input);
+          return row;
+        };
+      ((aiBox.className = "stbc-ai-settings"),
+        (aiToggleLabel.className = "stbc-setting-checkbox stbc-ai-enable-row"),
+        (aiToggle.type = "checkbox"),
+        (aiBaseURLInput.className = "b3-text-field fn__block"),
+        (aiBaseURLInput.placeholder = "https://api.deepseek.com/v1"),
+        (aiBaseURLInput.title = "API Base URL：OpenAI-compatible 接口根地址，不要带 /chat/completions。DeepSeek 官方通常填写 https://api.deepseek.com/v1"),
+        (aiApiKeyInput.className = "b3-text-field fn__block"),
+        (aiApiKeyInput.type = "password"),
+        (aiApiKeyInput.placeholder = "sk-..."),
+        (aiApiKeyInput.title = "API Key：服务商提供的密钥，仅保存在本地插件设置中。"),
+        (aiModelInput.className = "b3-text-field fn__block"),
+        (aiModelInput.placeholder = "deepseek-chat"),
+        (aiModelInput.title = "模型名称：服务商支持的 Chat Completions 模型，例如 deepseek-chat。"),
+        (aiTemperatureInput.className = "b3-text-field fn__block"),
+        (aiTemperatureInput.type = "number"),
+        (aiTemperatureInput.min = "0"),
+        (aiTemperatureInput.max = "2"),
+        (aiTemperatureInput.step = "0.1"),
+        (aiTemperatureInput.title = "Temperature：控制随机性。日程解析建议 0.1，越低越稳定。"),
+        (aiMaxTokensInput.className = "b3-text-field fn__block"),
+        (aiMaxTokensInput.type = "number"),
+        (aiMaxTokensInput.min = "256"),
+        (aiMaxTokensInput.max = "20000"),
+        (aiMaxTokensInput.title = "Max Tokens：限制 AI 最多返回多少内容。批量识别很多日程时可以适当调大。"),
+        (aiTimeoutInput.className = "b3-text-field fn__block"),
+        (aiTimeoutInput.type = "number"),
+        (aiTimeoutInput.min = "5000"),
+        (aiTimeoutInput.step = "1000"),
+        (aiTimeoutInput.title = "请求超时：单位毫秒。网络较慢或模型响应慢时可以调大。"),
+        (aiTestButton.className = "b3-button b3-button--outline"),
+        (aiTestButton.type = "button"),
+        (aiTestButton.dataset.action = "ai-test-connection"),
+        (aiTestButton.textContent = "测试连接"),
+        (aiHelp.className = "stbc-setting-help stbc-ai-setting-help"),
+        (aiHelp.textContent = "支持 OpenAI-compatible API。常见配置：DeepSeek Base URL 填 https://api.deepseek.com/v1，模型填 deepseek-chat。"),
+        aiToggleLabel.appendChild(aiToggle),
+        aiToggleLabel.appendChild(document.createTextNode(" 启用 AI 功能")),
+        aiBox.appendChild(aiToggleLabel),
+        aiBox.appendChild(makeAiField("API Base URL", "接口根地址，例如 https://api.deepseek.com/v1；不要填写 /chat/completions。", aiBaseURLInput)),
+        aiBox.appendChild(makeAiField("API Key", "服务商密钥，仅保存在本地插件设置中，不会写入日程或导出备份。", aiApiKeyInput)),
+        aiBox.appendChild(makeAiField("模型名称", "用于解析自然语言的模型名称，例如 deepseek-chat、gpt-4o-mini 或服务商提供的其他模型。", aiModelInput)),
+        aiBox.appendChild(makeAiField("Temperature", "控制随机性；AI 日程解析建议保持 0.1，越低越稳定，越高越发散。", aiTemperatureInput)),
+        aiBox.appendChild(makeAiField("Max Tokens", "AI 最多返回的内容长度；批量识别多条安排时可适当调高。", aiMaxTokensInput)),
+        aiBox.appendChild(makeAiField("请求超时 ms", "请求等待时间，单位毫秒；默认 30000，网络慢时可调大。", aiTimeoutInput)),
+        aiBox.appendChild(aiTestButton),
+        aiBox.appendChild(aiHelp));
+      const syncAiDraft = () => {
+        const draft = this.getSettingsDraftConfig();
+        ((draft.aiEnabled = aiToggle.checked),
+          (draft.aiProvider = "openai-compatible"),
+          (draft.aiBaseURL = aiBaseURLInput.value.trim()),
+          (draft.aiApiKey = aiApiKeyInput.value.trim()),
+          (draft.aiModel = aiModelInput.value.trim() || "deepseek-chat"),
+          (draft.aiTemperature = Math.max(0, Math.min(2, Number(aiTemperatureInput.value || 0.1)))),
+          (draft.aiMaxTokens = Math.max(256, Number(aiMaxTokensInput.value || 2000))),
+          (draft.aiTimeoutMs = Math.max(5000, Number(aiTimeoutInput.value || 30000))));
+      };
+      [aiToggle, aiBaseURLInput, aiApiKeyInput, aiModelInput, aiTemperatureInput, aiMaxTokensInput, aiTimeoutInput].forEach((input) => {
+        input.addEventListener("change", syncAiDraft);
+        input.addEventListener("input", syncAiDraft);
+      });
+      aiTestButton.addEventListener("click", async () => {
+        syncAiDraft();
+        const oldConfig = this.config;
+        this.config = { ...this.config, ...this.getSettingsDraftConfig() };
+        aiTestButton.disabled = true;
+        aiHelp.textContent = "正在测试连接...";
+        try {
+          await this.testAiConnection();
+          aiHelp.textContent = "连接成功。";
+          (0, n.showMessage)("AI 连接成功");
+        } catch (t) {
+          const e = t instanceof Error ? t.message : String(t);
+          aiHelp.textContent = `连接失败：${this.maskAiError(e)}`;
+          (0, n.showMessage)(`AI 连接失败：${this.maskAiError(e)}`);
+        } finally {
+          this.config = oldConfig;
+          aiTestButton.disabled = false;
+        }
+      });
+      this.setting.addItem({
+        title: "AI 快速创建",
+        description: "API Key 仅保存在本地插件设置中；AI 只负责解析，创建前必须由你确认。",
+        createActionElement: () => {
+          const t = this.getSettingsDraftConfig();
+          return (
+            (t.aiEnabled = Boolean(this.config.aiEnabled)),
+            (t.aiProvider = this.config.aiProvider || "openai-compatible"),
+            (t.aiBaseURL = this.config.aiBaseURL || ""),
+            (t.aiApiKey = this.config.aiApiKey || ""),
+            (t.aiModel = this.config.aiModel || "deepseek-chat"),
+            (t.aiTemperature = Number(this.config.aiTemperature ?? 0.1)),
+            (t.aiMaxTokens = Number(this.config.aiMaxTokens || 2000)),
+            (t.aiTimeoutMs = Number(this.config.aiTimeoutMs || 30000)),
+            (aiToggle.checked = Boolean(t.aiEnabled)),
+            (aiBaseURLInput.value = t.aiBaseURL),
+            (aiApiKeyInput.value = t.aiApiKey),
+            (aiModelInput.value = t.aiModel),
+            (aiTemperatureInput.value = String(t.aiTemperature)),
+            (aiMaxTokensInput.value = String(t.aiMaxTokens)),
+            (aiTimeoutInput.value = String(t.aiTimeoutMs)),
+            (aiHelp.textContent = "支持 OpenAI-compatible API。常见配置：DeepSeek Base URL 填 https://api.deepseek.com/v1，模型填 deepseek-chat。"),
+            aiBox
+          );
+        },
+      });
     }
     isMobileFrontend() {
       return String(n.getFrontend?.() || "").endsWith("mobile");
@@ -457,7 +572,7 @@
         );
       const n = Array.from(
         t.querySelectorAll(
-          ".stbc-all-day-event, .stbc-month-event, .stbc-goal-card, .stbc-year-month",
+          ".stbc-all-day-event, .stbc-month-event, .stbc-goal-card, .stbc-year-month, .stbc-days-card",
         ),
       ).slice(0, 48);
       n.length &&
@@ -510,6 +625,7 @@
         this.bindToolbar(),
         this.bindHorizontalWheelScroll(),
         await this.loadEvents(),
+        await this.loadImportantDays(),
         this.renderMainViewV2(),
         this.renderMiniMonthV2(),
         this.renderPomodoroPanel(),
@@ -521,6 +637,8 @@
     getToolbarTitleV2() {
       if ("goals" === this.viewMode)
         return `${this.currentDate.getFullYear()}年${this.currentDate.getMonth() + 1}月目标`;
+      if ("important-days" === this.viewMode)
+        return `${this.currentDate.getFullYear()}年${this.currentDate.getMonth() + 1}月倒数日`;
       return "year" === this.viewMode
         ? `${this.currentDate.getFullYear()}年`
         : "three" === this.viewMode
@@ -533,6 +651,8 @@
       <div class="stbc-toolbar">
         <div class="stbc-toolbar-title">${title}</div>
         <div class="stbc-toolbar-actions">
+          <button class="stbc-button stbc-ai-button ${this.aiDialogOpen ? "is-active" : ""}" data-action="ai-open" type="button">✨ AI 助手</button>
+          <button class="stbc-button stbc-days-toggle ${"important-days" === this.viewMode ? "is-active" : ""}" data-action="important-days" type="button">倒数日</button>
           <button class="stbc-button stbc-goals-toggle ${"goals" === this.viewMode ? "is-active" : ""}" data-action="goals" type="button">本月目标</button>
           <select class="stbc-select" data-action="view" aria-label="切换视图">
             <option value="week" ${"week" === this.viewMode ? "selected" : ""}>周</option>
@@ -540,9 +660,6 @@
             <option value="month" ${"month" === this.viewMode ? "selected" : ""}>月</option>
             <option value="year" ${"year" === this.viewMode ? "selected" : ""}>年</option>
           </select>
-          <button class="stbc-button" data-action="today">今天</button>
-          <button class="stbc-icon-button" data-action="prev" title="上一个周期" aria-label="上一个周期">‹</button>
-          <button class="stbc-icon-button" data-action="next" title="下一个周期" aria-label="下一个周期">›</button>
           <button class="stbc-icon-button stbc-settings-button" data-action="settings" title="设置 / 导入导出" aria-label="设置 / 导入导出">⚙</button>
           <button class="stbc-icon-button stbc-refresh-button" data-action="refresh" title="刷新" aria-label="刷新">↻</button>
         </div>
@@ -561,8 +678,11 @@
     }
     renderMainViewV2() {
       this.rootElement?.classList.toggle("is-goals-view", "goals" === this.viewMode);
+      this.rootElement?.classList.toggle("is-important-days-view", "important-days" === this.viewMode);
       this.rootElement?.querySelector(".stbc-calendar-panel")?.classList.remove("is-hidden");
-      ("goals" === this.viewMode
+      ("important-days" === this.viewMode
+        ? this.renderImportantDaysView()
+        : "goals" === this.viewMode
         ? this.renderMonthGoalsV2()
         : "week" === this.viewMode
           ? this.renderWeekV2()
@@ -598,7 +718,7 @@
           .querySelector('[data-action="today"]')
           ?.addEventListener("click", () => {
             ((this.currentDate = new Date()),
-              (this.viewMode = "goals" === this.viewMode ? "goals" : "three" === this.viewMode ? "three" : "week"),
+              (this.viewMode = "goals" === this.viewMode ? "goals" : "important-days" === this.viewMode ? "important-days" : "three" === this.viewMode ? "three" : "week"),
               this.render());
           }),
         t
@@ -624,7 +744,7 @@
         t.querySelectorAll("[data-date]").forEach((t) => {
           t.addEventListener("click", () => {
             ((this.currentDate = new Date(`${t.dataset.date}T12:00:00`)),
-              (this.viewMode = "goals" === this.viewMode ? "goals" : "three" === this.viewMode ? "three" : "week"),
+              (this.viewMode = "goals" === this.viewMode ? "goals" : "important-days" === this.viewMode ? "important-days" : "three" === this.viewMode ? "three" : "week"),
               this.render());
           });
         }));
@@ -650,6 +770,1065 @@
     savePomodoroRecords() {
       const t = this.saveData(a, this.config);
       t && "function" == typeof t.catch && t.catch((t) => console.warn("save pomodoro records failed", t));
+    }
+    defaultImportantDaysState() {
+      return {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        settings: {
+          keyword: "",
+          showArchived: false,
+          activeTab: "all",
+          sort: "smart",
+        },
+        events: [],
+      };
+    }
+    normalizeImportantDaysSettings(t = {}) {
+      const e = ["all", "countdown", "countup", "anniversary", "elapsed"].includes(t.activeTab)
+          ? t.activeTab
+          : "all",
+        n = ["smart", "date-asc", "date-desc", "created-desc"].includes(t.sort)
+          ? t.sort
+          : "smart";
+      return {
+        keyword: String(t.keyword || ""),
+        showArchived: Boolean(t.showArchived),
+        activeTab: e,
+        sort: n,
+      };
+    }
+    generateImportantDayId() {
+      return "undefined" != typeof crypto && "function" == typeof crypto.randomUUID
+        ? crypto.randomUUID()
+        : `day-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    parseImportantDayLocalDate(t) {
+      if (t instanceof Date && !Number.isNaN(t.getTime()))
+        return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+      const e = String(t || "").trim(),
+        n = e.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!n) return null;
+      const s = Number(n[1]),
+        a = Number(n[2]),
+        i = Number(n[3]),
+        o = new Date(s, a - 1, i);
+      return o.getFullYear() === s && o.getMonth() === a - 1 && o.getDate() === i ? o : null;
+    }
+    normalizeImportantDayDate(t) {
+      const e = this.parseImportantDayLocalDate(t);
+      return e ? p(e) : p(new Date());
+    }
+    daysBetweenLocal(t, e) {
+      const n = this.parseImportantDayLocalDate(t),
+        s = this.parseImportantDayLocalDate(e);
+      return n && s ? Math.round((n.getTime() - s.getTime()) / 864e5) : 0;
+    }
+    makeImportantDayLocalDate(t, e, n) {
+      const s = new Date(t, e, 1),
+        a = new Date(t, e + 1, 0).getDate();
+      return (s.setDate(Math.min(n, a)), s);
+    }
+    getImportantDayThemeNames() {
+      return [
+        "blue",
+        "sky",
+        "cyan",
+        "teal",
+        "green",
+        "emerald",
+        "lime",
+        "yellow",
+        "amber",
+        "orange",
+        "red",
+        "rose",
+        "pink",
+        "fuchsia",
+        "purple",
+        "violet",
+        "indigo",
+        "slate",
+        "gray",
+        "stone",
+        "brown",
+      ];
+    }
+    normalizeImportantDay(t = {}) {
+      const e = new Date().toISOString(),
+        n = ["countdown", "countup", "anniversary", "elapsed"].includes(t.mode) ? t.mode : "countdown",
+        s = this.getImportantDayThemeNames().includes(t.theme)
+          ? t.theme
+          : "blue";
+      return {
+        id: String(t.id || "").trim() || this.generateImportantDayId(),
+        title: String(t.title || "").trim() || "未命名日子",
+        date: this.normalizeImportantDayDate(t.date),
+        mode: n,
+        theme: s,
+        category: String(t.category || "").trim(),
+        note: String(t.note || "").trim(),
+        pinned: Boolean(t.pinned),
+        archived: Boolean(t.archived),
+        notify: Boolean(t.notify),
+        hideYear: Boolean(t.hideYear),
+        source: String(t.source || "").trim(),
+        createdAt: String(t.createdAt || t.created || e),
+        updatedAt: String(t.updatedAt || t.updated || e),
+      };
+    }
+    async loadImportantDays() {
+      const t = await this.loadData(IMPORTANT_DAYS_STORAGE_NAME).catch(() => null),
+        e = this.defaultImportantDaysState(),
+        n = t && "object" == typeof t ? t : {};
+      this.importantDaysState = {
+        version: 1,
+        updatedAt: String(n.updatedAt || e.updatedAt),
+        settings: this.normalizeImportantDaysSettings(n.settings || {}),
+        events: Array.isArray(n.events) ? n.events.map((t) => this.normalizeImportantDay(t)) : [],
+      };
+      return this.importantDaysState;
+    }
+    async saveImportantDays() {
+      const t = this.importantDaysState || this.defaultImportantDaysState(),
+        e = {
+          version: 1,
+          updatedAt: new Date().toISOString(),
+          settings: this.normalizeImportantDaysSettings(t.settings || {}),
+          events: Array.isArray(t.events) ? t.events.map((t) => this.normalizeImportantDay(t)) : [],
+        };
+      return ((this.importantDaysState = e), await this.saveData(IMPORTANT_DAYS_STORAGE_NAME, e), e);
+    }
+    getImportantDayNextAnniversary(t, e) {
+      const n = this.parseImportantDayLocalDate(t.date),
+        s = this.parseImportantDayLocalDate(e || new Date());
+      if (!n || !s) return null;
+      let a = this.makeImportantDayLocalDate(s.getFullYear(), n.getMonth(), n.getDate());
+      return a < s && (a = this.makeImportantDayLocalDate(s.getFullYear() + 1, n.getMonth(), n.getDate())), a;
+    }
+    getImportantDayAgeText(t, e) {
+      const n = this.parseImportantDayLocalDate(t.date),
+        s = this.parseImportantDayLocalDate(e || new Date());
+      if (!n || !s) return "日期无效";
+      if (n > s) return `还有 ${this.daysBetweenLocal(n, s)} 天开始`;
+      let a = s.getFullYear() - n.getFullYear(),
+        i = s.getMonth() - n.getMonth(),
+        o = s.getDate() - n.getDate();
+      if (o < 0) {
+        const t = new Date(s.getFullYear(), s.getMonth(), 0).getDate();
+        ((o += t), i--);
+      }
+      return i < 0 && (i += 12, a--), `${Math.max(0, a)} 年 ${Math.max(0, i)} 个月 ${Math.max(0, o)} 天`;
+    }
+    calcImportantDayInfo(t, e = new Date()) {
+      const n = this.normalizeImportantDay(t),
+        s = this.parseImportantDayLocalDate(e),
+        a = this.parseImportantDayLocalDate(n.date),
+        i = this.daysBetweenLocal(a, s);
+      let o = "",
+        r = i;
+      if ("countup" === n.mode)
+        o = i <= 0 ? `第 ${Math.abs(i) + 1} 天` : `还有 ${i} 天开始`;
+      else if ("anniversary" === n.mode) {
+        if (n.hideYear) {
+          const t = this.getImportantDayNextAnniversary(n, s);
+          r = t ? this.daysBetweenLocal(t, s) : i;
+          o = 0 === r ? "就是今天" : `还有 ${r} 天`;
+        } else o = this.getImportantDayAgeText(n, s);
+      } else
+        o = 0 === i ? "就是今天" : i > 0 ? `还有 ${i} 天` : `已过去 ${Math.abs(i)} 天`;
+      return {
+        days: i,
+        sortDays: r,
+        text: o,
+        status: this.getImportantDayStatus(n, s),
+      };
+    }
+    getImportantDayStatus(t, e = new Date()) {
+      const n = this.normalizeImportantDay(t);
+      if (n.archived) return "archived";
+      const s = this.parseImportantDayLocalDate(e),
+        a = this.parseImportantDayLocalDate(n.date),
+        i = this.daysBetweenLocal(a, s);
+      if (0 === i) return "today";
+      if ("countup" === n.mode && i < 0) return "running";
+      if ("anniversary" === n.mode && n.hideYear) {
+        const t = this.getImportantDayNextAnniversary(n, s),
+          e = t ? this.daysBetweenLocal(t, s) : i;
+        return e <= 7 ? "soon" : "upcoming";
+      }
+      return i > 0 ? (i <= 7 ? "soon" : "upcoming") : "past";
+    }
+    getImportantDaySearchText(t) {
+      return [t.title, t.category, t.note].map((t) => String(t || "").toLowerCase()).join("\n");
+    }
+    sortImportantDays(t) {
+      const e = this.normalizeImportantDaysSettings(this.importantDaysState?.settings || {}),
+        s = this.parseImportantDayLocalDate(this.currentDate || new Date()),
+        a = (t) => this.parseImportantDayLocalDate(t.date)?.getTime() || 0,
+        i = (t) => Date.parse(t.updatedAt || "") || 0,
+        o = (t) => Date.parse(t.createdAt || "") || 0,
+        r = (t) => this.calcImportantDayInfo(t, s);
+      return [...t].sort((t, n) => {
+        if ("date-asc" === e.sort) return a(t) - a(n) || i(n) - i(t);
+        if ("date-desc" === e.sort) return a(n) - a(t) || i(n) - i(t);
+        if ("created-desc" === e.sort) return o(n) - o(t) || i(n) - i(t);
+        if (t.pinned !== n.pinned) return t.pinned ? -1 : 1;
+        if (t.archived !== n.archived) return t.archived ? 1 : -1;
+        const s = r(t),
+          a = r(n),
+          c = { today: 0, soon: 1, upcoming: 2, running: 3, past: 4, archived: 9 };
+        return (c[s.status] ?? 5) - (c[a.status] ?? 5) || Math.abs(s.sortDays) - Math.abs(a.sortDays) || i(n) - i(t);
+      });
+    }
+    filterImportantDays(t, e = this.importantDaysState?.settings || {}) {
+      const n = this.normalizeImportantDaysSettings(e),
+        s = n.keyword.trim().toLowerCase();
+      return (Array.isArray(t) ? t : []).filter((t) => {
+        if (!n.showArchived && t.archived) return false;
+        if ("all" !== n.activeTab && t.mode !== n.activeTab) return false;
+        return !s || this.getImportantDaySearchText(t).includes(s);
+      });
+    }
+    getImportantDayModeLabel(t) {
+      return { countdown: "倒数日", countup: "正向日", anniversary: "纪念日", elapsed: "已过天数" }[t] || "倒数日";
+    }
+    getImportantDayStatusLabel(t) {
+      return { today: "今天", soon: "7 天内", upcoming: "即将到来", running: "进行中", past: "已过去", archived: "已归档" }[t] || "";
+    }
+    getImportantDayTheme(t) {
+      return {
+        blue: { bg: "#e0f2fe", color: "#0284c7", text: "#075985" },
+        sky: { bg: "#e0f7ff", color: "#38bdf8", text: "#075985" },
+        cyan: { bg: "#cffafe", color: "#06b6d4", text: "#155e75" },
+        teal: { bg: "#ccfbf1", color: "#14b8a6", text: "#115e59" },
+        green: { bg: "#dcfce7", color: "#22c55e", text: "#166534" },
+        emerald: { bg: "#d1fae5", color: "#10b981", text: "#065f46" },
+        lime: { bg: "#ecfccb", color: "#84cc16", text: "#3f6212" },
+        yellow: { bg: "#fef9c3", color: "#eab308", text: "#854d0e" },
+        amber: { bg: "#fef3c7", color: "#f59e0b", text: "#92400e" },
+        orange: { bg: "#ffedd5", color: "#f97316", text: "#9a3412" },
+        red: { bg: "#fee2e2", color: "#ef4444", text: "#991b1b" },
+        rose: { bg: "#ffe4e6", color: "#fb7185", text: "#9f1239" },
+        pink: { bg: "#fce7f3", color: "#ec4899", text: "#9d174d" },
+        fuchsia: { bg: "#fae8ff", color: "#d946ef", text: "#86198f" },
+        purple: { bg: "#f3e8ff", color: "#a855f7", text: "#6b21a8" },
+        violet: { bg: "#ede9fe", color: "#8b5cf6", text: "#5b21b6" },
+        indigo: { bg: "#e0e7ff", color: "#6366f1", text: "#3730a3" },
+        slate: { bg: "#f1f5f9", color: "#64748b", text: "#334155" },
+        gray: { bg: "#f1f5f9", color: "#64748b", text: "#334155" },
+        stone: { bg: "#f5f5f4", color: "#78716c", text: "#44403c" },
+        brown: { bg: "#fef3c7", color: "#a16207", text: "#713f12" },
+      }[t] || { bg: "#e0f2fe", color: "#0284c7", text: "#075985" };
+    }
+    renderImportantDaysView() {
+      const t = this.rootElement?.querySelector(".stbc-calendar-panel") || this.rootElement?.querySelector(".stbc-main");
+      if (!t) return;
+      const e = this.importantDaysState || this.defaultImportantDaysState(),
+        n = this.normalizeImportantDaysSettings(e.settings || {}),
+        s = e.events || [],
+        a = this.parseImportantDayLocalDate(this.currentDate || new Date()),
+        i = this.sortImportantDays(this.filterImportantDays(s, n)),
+        o = s.filter((t) => !t.archived),
+        r = {
+          all: o.length,
+          countdown: o.filter((t) => "countdown" === t.mode).length,
+          countup: o.filter((t) => "countup" === t.mode).length,
+          anniversary: o.filter((t) => "anniversary" === t.mode).length,
+          soon: o.filter((t) => ["today", "soon"].includes(this.getImportantDayStatus(t, a))).length,
+        },
+        c = [
+          ["all", "全部"],
+          ["countdown", "倒数日"],
+          ["countup", "正向日"],
+          ["anniversary", "纪念日"],
+          ["elapsed", "已过天数"],
+        ],
+        l = i
+          .map((t) => {
+            const e = this.calcImportantDayInfo(t, a),
+              n = this.getImportantDayTheme(t.theme);
+            return `
+              <article class="stbc-days-card is-${y(t.theme)} is-${y(e.status)} ${t.archived ? "is-archived" : ""}" data-id="${y(t.id)}" style="--stbc-days-color:${n.color};--stbc-days-bg:${n.bg};--stbc-days-text:${n.text};">
+                <div class="stbc-days-card-main">
+                  <div class="stbc-days-card-title-row">
+                    <h3>${y(t.title)}</h3>
+                    ${t.pinned ? '<span class="stbc-days-badge">置顶</span>' : ""}
+                    ${t.archived ? '<span class="stbc-days-badge stbc-days-badge--muted">归档</span>' : ""}
+                  </div>
+                  <div class="stbc-days-card-meta">
+                    <span>${y(t.date)}</span>
+                    <span>${y(this.getImportantDayModeLabel(t.mode))}</span>
+                    ${t.category ? `<span>${y(t.category)}</span>` : ""}
+                    <span>${y(this.getImportantDayStatusLabel(e.status))}</span>
+                  </div>
+                  ${t.note ? `<p class="stbc-days-note">${y(t.note)}</p>` : ""}
+                </div>
+                <div class="stbc-days-count">
+                  <strong>${y(e.text)}</strong>
+                  <span>${y(t.notify ? "已开启提醒" : "本地 JSON")}</span>
+                </div>
+                <div class="stbc-days-card-actions">
+                  <button class="stbc-icon-button" data-action="important-days-pin" type="button" title="${t.pinned ? "取消置顶" : "置顶"}" aria-label="${t.pinned ? "取消置顶" : "置顶"}">${t.pinned ? "★" : "☆"}</button>
+                  <button class="stbc-button" data-action="important-days-edit" type="button">编辑</button>
+                  <button class="stbc-button" data-action="important-days-archive" type="button">${t.archived ? "取消归档" : "归档"}</button>
+                  <button class="stbc-button stbc-days-danger" data-action="important-days-delete" type="button">删除</button>
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+      t.innerHTML = `
+        <section class="stbc-days-view">
+          <header class="stbc-days-header">
+            <div>
+              <div class="stbc-days-kicker">${p(a)} 统计</div>
+              <h2 class="stbc-days-title">倒数日</h2>
+              <p>管理考试、纪念日、正向日和重要日期节点</p>
+            </div>
+            <div class="stbc-days-actions">
+              <button class="stbc-button" data-action="important-days-new" type="button">新增日期</button>
+              <button class="stbc-button" data-action="important-days-import" type="button">导入旧数据</button>
+              <button class="stbc-button" data-action="important-days-export" type="button">导出 JSON</button>
+            </div>
+          </header>
+          <div class="stbc-days-stats">
+            <div class="stbc-days-stat-card"><span>全部项目</span><strong>${r.all}</strong></div>
+            <div class="stbc-days-stat-card"><span>倒数日</span><strong>${r.countdown}</strong></div>
+            <div class="stbc-days-stat-card"><span>正向日</span><strong>${r.countup}</strong></div>
+            <div class="stbc-days-stat-card"><span>纪念日</span><strong>${r.anniversary}</strong></div>
+            <div class="stbc-days-stat-card"><span>7 天内</span><strong>${r.soon}</strong></div>
+          </div>
+          <div class="stbc-days-toolbar">
+            <label class="stbc-days-search">
+              <span>搜索</span>
+              <input class="b3-text-field" data-action="important-days-search" type="search" value="${y(n.keyword)}" placeholder="搜索标题、分类、备注" />
+            </label>
+            <div class="stbc-days-tabs" role="tablist">
+              ${c.map(([t, e]) => `<button class="stbc-days-tab ${n.activeTab === t ? "is-active" : ""}" data-action="important-days-tab" data-tab="${t}" type="button">${e}</button>`).join("")}
+            </div>
+            <label class="stbc-days-switch"><input data-action="important-days-toggle-archived" type="checkbox" ${n.showArchived ? "checked" : ""} /> 显示归档</label>
+            <select class="stbc-select" data-action="important-days-sort" aria-label="倒数日排序">
+              <option value="smart" ${"smart" === n.sort ? "selected" : ""}>智能排序</option>
+              <option value="date-asc" ${"date-asc" === n.sort ? "selected" : ""}>日期升序</option>
+              <option value="date-desc" ${"date-desc" === n.sort ? "selected" : ""}>日期降序</option>
+              <option value="created-desc" ${"created-desc" === n.sort ? "selected" : ""}>创建时间倒序</option>
+            </select>
+          </div>
+          <div class="stbc-days-list">
+            ${l || '<div class="stbc-days-empty">还没有匹配的日期。可以新增日期，或导入旧 important-days JSON。</div>'}
+          </div>
+        </section>
+      `;
+      this.bindImportantDaysView(t);
+    }
+    bindImportantDaysView(t) {
+      if ("important-days" !== this.viewMode) return;
+      t.querySelector('[data-action="important-days-new"]')?.addEventListener("click", () => this.openImportantDayDialog());
+      t.querySelector('[data-action="important-days-import"]')?.addEventListener("click", () => this.importImportantDaysFromFile());
+      t.querySelector('[data-action="important-days-export"]')?.addEventListener("click", () => this.exportImportantDays());
+      t.querySelector('[data-action="important-days-search"]')?.addEventListener("input", async (t) => {
+        this.importantDaysState.settings.keyword = t.currentTarget.value || "";
+        await this.saveImportantDays();
+        this.renderImportantDaysView();
+        const e = this.rootElement?.querySelector('[data-action="important-days-search"]'),
+          n = this.importantDaysState.settings.keyword.length;
+        e?.focus();
+        e?.setSelectionRange?.(n, n);
+      });
+      t.querySelectorAll('[data-action="important-days-tab"]').forEach((t) => {
+        t.addEventListener("click", async () => {
+          this.importantDaysState.settings.activeTab = t.dataset.tab || "all";
+          await this.saveImportantDays();
+          this.renderImportantDaysView();
+        });
+      });
+      t.querySelector('[data-action="important-days-toggle-archived"]')?.addEventListener("change", async (t) => {
+        this.importantDaysState.settings.showArchived = Boolean(t.currentTarget.checked);
+        await this.saveImportantDays();
+        this.renderImportantDaysView();
+      });
+      t.querySelector('[data-action="important-days-sort"]')?.addEventListener("change", async (t) => {
+        this.importantDaysState.settings.sort = t.currentTarget.value || "smart";
+        await this.saveImportantDays();
+        this.renderImportantDaysView();
+      });
+      t.querySelectorAll("[data-action^='important-days-']").forEach((e) => {
+        e.addEventListener("click", async (s) => {
+          const a = s.currentTarget,
+            i = a.closest(".stbc-days-card")?.dataset.id;
+          if (!i) return;
+          s.preventDefault();
+          s.stopPropagation();
+          if ("important-days-edit" === a.dataset.action) return void this.openImportantDayDialog(i);
+          if ("important-days-pin" === a.dataset.action) return void (await this.toggleImportantDayPinned(i));
+          if ("important-days-archive" === a.dataset.action) return void (await this.toggleImportantDayArchived(i));
+          if ("important-days-delete" === a.dataset.action) return void (await this.deleteImportantDay(i));
+        });
+      });
+    }
+    getImportantDayById(t) {
+      return (this.importantDaysState?.events || []).find((e) => String(e.id) === String(t));
+    }
+    renderImportantDayFormContent(t) {
+      const e = this.normalizeImportantDay(t || { date: p(this.currentDate || new Date()) }),
+        n = [
+          ["countdown", "倒数日"],
+          ["countup", "正向日"],
+          ["anniversary", "纪念日"],
+          ["elapsed", "已过天数"],
+        ],
+        s = this.getImportantDayThemeNames().map((t) => [
+          t,
+          {
+            blue: "蓝色",
+            sky: "天蓝",
+            cyan: "青色",
+            teal: "蓝绿",
+            green: "绿色",
+            emerald: "翡翠",
+            lime: "青柠",
+            yellow: "黄色",
+            amber: "琥珀",
+            orange: "橙色",
+            red: "红色",
+            rose: "玫瑰",
+            pink: "粉色",
+            fuchsia: "洋红",
+            purple: "紫色",
+            violet: "紫罗兰",
+            indigo: "靛蓝",
+            slate: "石板",
+            gray: "灰色",
+            stone: "岩灰",
+            brown: "咖啡",
+          }[t] || t,
+        ]),
+        a = s
+          .map(([t, n]) => {
+            const s = this.getImportantDayTheme(t);
+            return `\n            <label class="stbc-color-choice stbc-days-theme-choice" title="${n}">\n              <input type="radio" name="stbc-important-day-theme" value="${t}" ${e.theme === t ? "checked" : ""} />\n              <span style="--stbc-choice-color:${s.color};--stbc-choice-bg:${s.bg};"></span>\n            </label>\n          `;
+          })
+          .join("");
+      return `
+        <div class="stbc-form stbc-days-form" data-id="${y(t?.id || "")}">
+          <label class="stbc-form-row"><span>标题</span><input class="b3-text-field stbc-days-form-title" value="${y(e.title)}" /></label>
+          <label class="stbc-form-row"><span>日期</span><input class="b3-text-field stbc-days-form-date" type="date" value="${y(e.date)}" /></label>
+          <label class="stbc-form-row"><span>类型</span><select class="b3-text-field stbc-days-form-mode">${n.map(([t, n]) => `<option value="${t}" ${e.mode === t ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+          <label class="stbc-form-row"><span>分类</span><input class="b3-text-field stbc-days-form-category" value="${y(e.category)}" placeholder="考试 / 生日 / 纪念日" /></label>
+          <div class="stbc-form-row">
+            <span>主题</span>
+            <div class="stbc-color-grid stbc-days-theme-grid">${a}</div>
+          </div>
+          <label class="stbc-form-row stbc-label-row"><span>备注</span><textarea class="b3-text-field stbc-days-form-note" rows="3">${y(e.note)}</textarea></label>
+          <div class="stbc-days-form-checks">
+            <label><input class="stbc-days-form-pinned" type="checkbox" ${e.pinned ? "checked" : ""} /> 置顶</label>
+            <label><input class="stbc-days-form-archived" type="checkbox" ${e.archived ? "checked" : ""} /> 归档</label>
+            <label><input class="stbc-days-form-notify" type="checkbox" ${e.notify ? "checked" : ""} /> 提醒</label>
+            <label><input class="stbc-days-form-hide-year" type="checkbox" ${e.hideYear ? "checked" : ""} /> 隐藏年份</label>
+          </div>
+          <div class="stbc-form-actions">
+            <button class="b3-button b3-button--cancel" data-action="important-days-cancel" type="button">取消</button>
+            <button class="b3-button b3-button--text" data-action="important-days-save" type="button">保存</button>
+          </div>
+        </div>
+      `;
+    }
+    openImportantDayDialog(t) {
+      const e = "string" == typeof t ? this.getImportantDayById(t) : t,
+        s = new n.Dialog({
+          title: e ? "编辑日期" : "新增日期",
+          content: this.renderImportantDayFormContent(e),
+          width: "520px",
+        }),
+        a = s.element,
+        i = a.querySelector(".stbc-days-form");
+      (a?.classList.add("stbc-glass-dialog"),
+        a?.querySelector(".b3-dialog__close")?.addEventListener("click", (t) => { t.preventDefault(); t.stopPropagation(); s.destroy(); }, { capture: true }),
+        i?.querySelector('[data-action="important-days-cancel"]')?.addEventListener("click", () => s.destroy()),
+        i?.querySelector('[data-action="important-days-save"]')?.addEventListener("click", async () => {
+          try {
+            const t = this.readImportantDayForm(i, e);
+            if (!t.title.trim()) return void (0, n.showMessage)("标题不能为空");
+            if (!this.parseImportantDayLocalDate(t.date)) return void (0, n.showMessage)("日期必须是合法 YYYY-MM-DD");
+            if (!["countdown", "countup", "anniversary", "elapsed"].includes(t.mode)) return void (0, n.showMessage)("类型不合法");
+            await this.upsertImportantDay(t);
+            (s.destroy(), this.renderImportantDaysView(), (0, n.showMessage)(e ? "日期已更新" : "日期已新增"));
+          } catch (t) {
+            (console.error("save important day failed", t), (0, n.showMessage)(`保存失败：${t instanceof Error ? t.message : String(t)}`));
+          }
+        }));
+    }
+    readImportantDayForm(t, e) {
+      const n = new Date().toISOString();
+      return {
+        id: e?.id || this.generateImportantDayId(),
+        title: String(t.querySelector(".stbc-days-form-title")?.value || "").trim(),
+        date: String(t.querySelector(".stbc-days-form-date")?.value || "").trim(),
+        mode: String(t.querySelector(".stbc-days-form-mode")?.value || "countdown"),
+        theme: String(t.querySelector('input[name="stbc-important-day-theme"]:checked')?.value || "blue"),
+        category: String(t.querySelector(".stbc-days-form-category")?.value || "").trim(),
+        note: String(t.querySelector(".stbc-days-form-note")?.value || "").trim(),
+        pinned: Boolean(t.querySelector(".stbc-days-form-pinned")?.checked),
+        archived: Boolean(t.querySelector(".stbc-days-form-archived")?.checked),
+        notify: Boolean(t.querySelector(".stbc-days-form-notify")?.checked),
+        hideYear: Boolean(t.querySelector(".stbc-days-form-hide-year")?.checked),
+        source: e?.source || "",
+        createdAt: e?.createdAt || n,
+        updatedAt: n,
+      };
+    }
+    async upsertImportantDay(t) {
+      const e = this.normalizeImportantDay(t),
+        n = this.importantDaysState || this.defaultImportantDaysState(),
+        s = Array.isArray(n.events) ? n.events : [],
+        a = s.findIndex((t) => t.id === e.id);
+      this.importantDaysState = { ...n, events: a >= 0 ? s.map((t, n) => (n === a ? e : t)) : [e, ...s] };
+      await this.saveImportantDays();
+    }
+    async toggleImportantDayPinned(t) {
+      const e = this.getImportantDayById(t);
+      e && (await this.upsertImportantDay({ ...e, pinned: !e.pinned, updatedAt: new Date().toISOString() }), this.renderImportantDaysView());
+    }
+    async toggleImportantDayArchived(t) {
+      const e = this.getImportantDayById(t);
+      e && (await this.upsertImportantDay({ ...e, archived: !e.archived, updatedAt: new Date().toISOString() }), this.renderImportantDaysView());
+    }
+    async deleteImportantDay(t) {
+      const e = this.getImportantDayById(t);
+      if (!e || !window.confirm(`删除日期“${e.title}”？\n\n只会从倒数日 JSON 数据中移除，不会删除思源文档。`)) return;
+      this.importantDaysState.events = (this.importantDaysState.events || []).filter((e) => e.id !== t);
+      await this.saveImportantDays();
+      this.renderImportantDaysView();
+      (0, n.showMessage)("日期已删除");
+    }
+    normalizeImportantDaysImportObject(t) {
+      if (!t || "object" != typeof t) throw new Error("JSON 不是有效对象");
+      return Array.isArray(t) ? t : Array.isArray(t.events) ? t.events : [];
+    }
+    async importImportantDaysObject(t) {
+      const e = this.normalizeImportantDaysImportObject(t),
+        n = this.importantDaysState || this.defaultImportantDaysState(),
+        s = new Set((n.events || []).map((t) => String(t.id || "")).filter(Boolean)),
+        a = new Set((n.events || []).map((t) => `${String(t.title || "").toLowerCase()}|${t.date}|${t.mode}`)),
+        i = [];
+      let o = 0,
+        r = 0,
+        c = 0;
+      for (const t of e) {
+        try {
+          const e = String(t?.id || "").trim(),
+            l = String(t?.title || "未命名日子").trim().toLowerCase(),
+            d = this.normalizeImportantDayDate(t?.date),
+            h = ["countdown", "countup", "anniversary", "elapsed"].includes(t?.mode) ? t.mode : "countdown",
+            m = `${l}|${d}|${h}`;
+          if ((e && s.has(e)) || (!e && a.has(m))) {
+            r++;
+            continue;
+          }
+          const b = this.normalizeImportantDay({ ...t, id: e || undefined, date: d, mode: h });
+          (i.push(b), b.id && s.add(b.id), a.add(m), o++);
+        } catch (t) {
+          (console.warn("import important day failed", t), c++);
+        }
+      }
+      return ((this.importantDaysState = { ...n, events: [...i, ...(n.events || [])] }), await this.saveImportantDays(), { ok: o, skipped: r, fail: c });
+    }
+    importImportantDaysFromFile() {
+      const t = document.createElement("input");
+      ((t.type = "file"),
+        (t.accept = ".json,application/json"),
+        t.addEventListener("change", async () => {
+          const e = t.files?.[0];
+          if (!e) return;
+          try {
+            const t = await this.readTextFile(e),
+              s = JSON.parse(t),
+              a = await this.importImportantDaysObject(s);
+            (this.renderImportantDaysView(), (0, n.showMessage)(`导入完成：成功 ${a.ok} 条，跳过重复 ${a.skipped} 条，失败 ${a.fail} 条`));
+          } catch (t) {
+            (console.error("import important days failed", t), (0, n.showMessage)(`导入失败：${t instanceof Error ? t.message : String(t)}`));
+          }
+        }),
+        t.click());
+    }
+    exportImportantDays() {
+      const t = this.importantDaysState || this.defaultImportantDaysState(),
+        e = { version: 1, updatedAt: new Date().toISOString(), settings: this.normalizeImportantDaysSettings(t.settings || {}), events: t.events || [] },
+        s = `time-block-calendar-important-days-${p(new Date())}.json`;
+      (this.downloadTextFile(s, JSON.stringify(e, null, 2)), (0, n.showMessage)("倒数日 JSON 已导出"));
+    }
+    getAiConfig() {
+      return {
+        aiEnabled: Boolean(this.config.aiEnabled),
+        aiBaseURL: String(this.config.aiBaseURL || "").trim(),
+        aiApiKey: String(this.config.aiApiKey || "").trim(),
+        aiModel: String(this.config.aiModel || "").trim(),
+        aiTemperature: Number(this.config.aiTemperature ?? 0.1),
+        aiMaxTokens: Number(this.config.aiMaxTokens || 2000),
+        aiTimeoutMs: Number(this.config.aiTimeoutMs || 30000),
+      };
+    }
+    validateAiConfig() {
+      const t = this.getAiConfig();
+      if (!t.aiEnabled) throw new Error("请先在设置中启用 AI 功能");
+      if (!t.aiBaseURL) throw new Error("请先填写 API 地址");
+      if (!t.aiApiKey) throw new Error("请先填写 API Key");
+      if (!t.aiModel) throw new Error("请先填写模型名称");
+      return t;
+    }
+    getAiEndpoint(t) {
+      return `${String(t || "").replace(/\/+$/, "")}/chat/completions`;
+    }
+    maskAiError(t) {
+      return String(t || "")
+        .replace(/sk-[A-Za-z0-9_\-]{8,}/g, "sk-***")
+        .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, "Bearer ***")
+        .slice(0, 220);
+    }
+    buildAiSystemPrompt(t = {}) {
+      return `你是一个时间管理插件的自然语言解析器。
+你的任务是把用户输入的中文自然语言转换为结构化 JSON。
+你只能返回 JSON，不能返回 Markdown，不能返回解释文字。
+
+当前日期是：${t.today || p(new Date())}
+当前所在周是：${t.weekRange || ""}
+当前插件时区按用户本地时间处理。
+
+你需要识别两类动作：
+1. create_time_block，用于创建时间块或日程，必须包含 title、date、startTime、endTime。
+2. create_important_day，用于创建倒数日、正向日、纪念日、已过天数，必须包含 title、date、mode。
+
+mode 规则：
+- 如果用户说“倒数”“还有几天”“考试”“截止”“DDL”，通常用 countdown。
+- 如果用户说“从某天开始”“坚持第几天”“已经开始”，通常用 countup。
+- 如果用户说“生日”“纪念日”“恋爱纪念日”，通常用 anniversary。
+- 如果用户说“已经过去多久”，通常用 elapsed。
+
+日期解析规则：
+- “今天” = 当前日期，“明天” = 当前日期 + 1 天，“后天” = 当前日期 + 2 天。
+- 没有年份的日期，优先使用当前年份。
+- 如果该日期在当前年份已经过去，并且语义明显指未来事件，则使用下一年。
+- 必须输出 YYYY-MM-DD，不要使用 UTC，按本地日期理解。
+
+时间解析规则：
+- 上午 9 点 = 09:00，下午 2 点 = 14:00，晚上 8 点 = 20:00。
+- 如果用户给了开始时间但没给结束时间，默认持续 60 分钟，并在 note 中说明“AI 默认时长 60 分钟”。
+- 如果没有明确开始时间，不要创建 create_time_block，可以改为 questions 询问。
+- 如果只有日期没有具体时间，更适合 create_important_day。
+
+分类推断：
+- 六级、英语、单词、翻译、作文 -> 英语 / 考试
+- 考研、线代、高数、概率论、政治、专业课 -> 考研
+- 微机电、嵌入式、传感器、ARM -> 课程
+- 生日 -> 生日
+- 恋爱、纪念 -> 恋爱 / 纪念日
+- 没有明确分类时 category 为空字符串。
+
+输出要求：
+- 只返回合法 JSON。
+- actions 最多返回 20 条。
+- 每个 action 都要有 confidence，范围 0 到 1。
+- 不确定的信息不要编造，放到 questions 中。
+- 不要直接说创建成功，因为你只是解析器。
+
+JSON 格式：
+{"summary":"识别到 1 个待创建项目","needConfirm":true,"actions":[{"type":"create_time_block","title":"背单词","date":"2026-06-06","startTime":"09:00","endTime":"11:00","category":"英语","note":"","sourceText":"明天上午9点到11点背单词","confidence":0.92}],"questions":[]}`;
+    }
+    async requestAiChat(t, e = {}) {
+      const s = this.validateAiConfig(),
+        a = new AbortController(),
+        i = window.setTimeout(() => a.abort(), Math.max(5000, s.aiTimeoutMs || 30000));
+      try {
+        const o = await fetch(this.getAiEndpoint(s.aiBaseURL), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${s.aiApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: s.aiModel,
+            temperature: Number.isFinite(s.aiTemperature) ? s.aiTemperature : 0.1,
+            max_tokens: Math.max(1, Number(e.maxTokens || s.aiMaxTokens || 2000)),
+            messages: t,
+          }),
+          signal: a.signal,
+        });
+        const r = await o.text();
+        if (!o.ok) throw new Error(`HTTP ${o.status} ${r ? r.slice(0, 120) : ""}`);
+        const c = JSON.parse(r);
+        return c?.choices?.[0]?.message?.content ?? c?.choices?.[0]?.text ?? "";
+      } catch (t) {
+        if ("AbortError" === t?.name) throw new Error("AI 请求超时");
+        throw new Error(this.maskAiError(t instanceof Error ? t.message : String(t)) || "AI 请求失败，请检查网络或 API 配置");
+      } finally {
+        window.clearTimeout(i);
+      }
+    }
+    async testAiConnection() {
+      await this.requestAiChat(
+        [
+          { role: "system", content: '只返回 {"ok":true}' },
+          { role: "user", content: "ping" },
+        ],
+        { maxTokens: 16 },
+      );
+    }
+    extractJsonObject(t) {
+      const e = String(t || "").trim();
+      if (!e) throw new Error("AI 返回格式不正确，请重试");
+      try {
+        return JSON.parse(e);
+      } catch (t) {}
+      let n = -1,
+        s = 0,
+        a = !1,
+        i = !1;
+      for (let o = 0; o < e.length; o++) {
+        const r = e[o];
+        if (i) {
+          i = !1;
+          continue;
+        }
+        if ("\\" === r && a) {
+          i = !0;
+          continue;
+        }
+        if ('"' === r) {
+          a = !a;
+          continue;
+        }
+        if (a) continue;
+        if ("{" === r) {
+          0 === s && (n = o);
+          s++;
+        } else if ("}" === r && s > 0) {
+          s--;
+          if (0 === s && n >= 0) return JSON.parse(e.slice(n, o + 1));
+        }
+      }
+      throw new Error("AI 返回格式不正确，请重试");
+    }
+    async callAiParser(t) {
+      const e = new Date(),
+        n = b(e),
+        s = m(n, 6),
+        a = this.buildAiSystemPrompt({ today: p(e), weekRange: `${p(n)} 至 ${p(s)}` }),
+        i = await this.requestAiChat([
+          { role: "system", content: a },
+          { role: "user", content: String(t || "") },
+        ]);
+      return this.extractJsonObject(i);
+    }
+    isValidAiDate(t) {
+      return Boolean(this.parseImportantDayLocalDate(t));
+    }
+    isValidAiTime(t) {
+      return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t || ""));
+    }
+    aiTimeToMinutes(t) {
+      const e = String(t || "").match(/^(\d{2}):(\d{2})$/);
+      return e ? 60 * Number(e[1]) + Number(e[2]) : NaN;
+    }
+    getAiActionTypeLabel(t) {
+      if ("create_time_block" === t.type) return "时间块";
+      const e = { countdown: "倒数日", countup: "正向日", anniversary: "纪念日", elapsed: "已过天数" };
+      return e[t.mode] || "倒数日";
+    }
+    normalizeAiConfidence(t) {
+      const e = Number(t);
+      return Number.isFinite(e) ? Math.max(0, Math.min(1, e)) : 0.8;
+    }
+    validateAiActions(t) {
+      if (!t || "object" != typeof t || Array.isArray(t)) throw new Error("AI 返回格式不正确，请重试");
+      const e = Array.isArray(t.actions) ? t.actions.slice(0, 20) : [],
+        n = Array.isArray(t.questions) ? t.questions.map((t) => String(t || "").trim()).filter(Boolean) : [],
+        s = e.map((t, e) => {
+          const s = t && "object" == typeof t ? t : {},
+            a = [],
+            i = [],
+            o = String(s.type || ""),
+            r = {
+              index: e,
+              raw: s,
+              type: o,
+              title: this.safeBlockText(s.title || ""),
+              date: String(s.date || "").trim(),
+              startTime: String(s.startTime || "").trim(),
+              endTime: String(s.endTime || "").trim(),
+              mode: String(s.mode || "").trim(),
+              category: String(s.category || "").trim(),
+              color: this.normalizeImportColor(s.color || s.eventColor || "", String(s.category || "").trim()),
+              theme: String(s.theme || "blue").trim(),
+              note: String(s.note || "").trim(),
+              sourceText: String(s.sourceText || "").trim(),
+              confidence: this.normalizeAiConfidence(s.confidence),
+              valid: !0,
+              selected: !0,
+              warnings: i,
+              errors: a,
+            };
+          if ("create_time_block" === o) {
+            if (!r.title) a.push("缺少标题");
+            if (!this.isValidAiDate(r.date)) a.push("日期必须是 YYYY-MM-DD");
+            if (!this.isValidAiTime(r.startTime)) a.push("开始时间必须是 HH:mm");
+            if (!this.isValidAiTime(r.endTime)) a.push("结束时间必须是 HH:mm");
+            const t = this.aiTimeToMinutes(r.startTime),
+              e = this.aiTimeToMinutes(r.endTime);
+            if (!Number.isNaN(t) && !Number.isNaN(e) && e <= t) a.push("结束时间必须晚于开始时间");
+          } else if ("create_important_day" === o) {
+            if (!r.title) a.push("缺少标题");
+            if (!this.isValidAiDate(r.date)) a.push("日期必须是 YYYY-MM-DD");
+            if (!["countdown", "countup", "anniversary", "elapsed"].includes(r.mode)) a.push("类型必须是 countdown / countup / anniversary / elapsed");
+            if (!["blue", "green", "red", "orange", "pink", "indigo", "lime", "cyan", "gray"].includes(r.theme)) r.theme = "blue";
+          } else a.push("不支持的 action.type");
+          r.confidence < 0.7 && i.push("识别置信度较低，请确认");
+          this.addAiConflictWarnings(r);
+          r.valid = 0 === a.length;
+          r.selected = r.valid && !i.includes("可能重复");
+          return r;
+        });
+      return {
+        summary: String(t.summary || (s.length ? `识别到 ${s.length} 个待创建项目` : "没有识别到可创建的时间项目")),
+        needConfirm: !1 !== t.needConfirm,
+        questions: n,
+        actions: s,
+      };
+    }
+    addAiConflictWarnings(t) {
+      if ("create_time_block" === t.type && this.isValidAiDate(t.date) && this.isValidAiTime(t.startTime) && this.isValidAiTime(t.endTime)) {
+        const e = this.aiTimeToMinutes(t.startTime),
+          n = this.aiTimeToMinutes(t.endTime),
+          s = (this.events || []).find((s) => p(s.start) === t.date && !s.allDay && this.aiTimeToMinutes(f(s.start)) < n && this.aiTimeToMinutes(f(s.end)) > e);
+        s && t.warnings.push(`可能与“${s.title || "已有时间块"}”发生时间冲突`);
+      }
+      if ("create_important_day" === t.type && this.isValidAiDate(t.date)) {
+        const e = (this.importantDaysState?.events || []).some((e) => String(e.title || "").trim() === t.title && e.date === t.date && e.mode === t.mode);
+        e && t.warnings.push("可能重复");
+      }
+    }
+    renderAiActionColorPickerHTML(t) {
+      if (!t || "create_time_block" !== t.type || !t.valid) return "";
+      const e = this.normalizeImportColor(t.color || "", t.category || ""),
+        n = `stbc-ai-action-color-${t.index}`,
+        s = r
+          .map((s) => `
+            <label class="stbc-color-choice stbc-ai-color-choice" title="${y(s.name)}">
+              <input data-action="ai-color-select" data-index="${y(String(t.index ?? ""))}" type="radio" name="${y(n)}" value="${y(s.value)}" ${s.value === e ? "checked" : ""} />
+              <span style="--stbc-choice-color:${y(s.value)};--stbc-choice-bg:${y(s.bg)};"></span>
+            </label>
+          `)
+          .join("");
+      return `
+        <div class="stbc-ai-color-picker">
+          <span>颜色</span>
+          <div class="stbc-color-grid stbc-ai-color-grid">${s}</div>
+        </div>
+      `;
+    }
+    renderAiPreviewHTML(t) {
+      const e = t?.actions || [],
+        n = t?.questions || [],
+        s = e
+          .map((t) => {
+            const e = t.valid ? t.warnings.length ? "stbc-ai-preview-card-warning" : "" : "stbc-ai-preview-card-error",
+              n = t.warnings.concat(t.errors).map((t) => `<li>${y(t)}</li>`).join("");
+            return `
+              <article class="stbc-ai-preview-card ${e}" data-index="${t.index}" style="${"create_time_block" === t.type ? `--stbc-ai-action-color:${y(this.normalizeImportColor(t.color || "", t.category || ""))};` : ""}">
+                <label class="stbc-ai-preview-check">
+                  <input data-action="ai-toggle-action" data-index="${t.index}" type="checkbox" ${t.selected ? "checked" : ""} ${t.valid ? "" : "disabled"} />
+                  <span>${y(t.valid ? this.getAiActionTypeLabel(t) : "无法创建")}</span>
+                </label>
+                <div class="stbc-ai-preview-main">
+                  <h4>${y(t.title || "未命名")}</h4>
+                  <div class="stbc-ai-preview-meta">
+                    <span>${y(t.date || "缺少日期")}</span>
+                    ${"create_time_block" === t.type ? `<span>${y(t.startTime || "--:--")} - ${y(t.endTime || "--:--")}</span>` : `<span>${y(this.getAiActionTypeLabel(t))}</span>`}
+                    ${t.category ? `<span>${y(t.category)}</span>` : ""}
+                    <span class="stbc-ai-confidence">置信度 ${Math.round(100 * t.confidence)}%</span>
+                  </div>
+                  ${"create_time_block" === t.type ? this.renderAiActionColorPickerHTML(t) : ""}
+                  ${t.note ? `<p>${y(t.note)}</p>` : ""}
+                  ${t.sourceText ? `<div class="stbc-ai-source">原文：${y(t.sourceText)}</div>` : ""}
+                  ${n ? `<ul class="stbc-ai-warning-list">${n}</ul>` : ""}
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+      return `
+        <div class="stbc-ai-preview-head">
+          <strong>${y(t?.summary || "")}</strong>
+          <span>请确认后再创建，AI 不会直接写入数据。</span>
+        </div>
+        ${n.length ? `<ul class="stbc-ai-question-list">${n.map((t) => `<li>${y(t)}</li>`).join("")}</ul>` : ""}
+        <div class="stbc-ai-preview-list">${s || '<div class="stbc-ai-empty">没有识别到可创建的时间项目。</div>'}</div>
+        <div class="stbc-ai-actions">
+          <button class="b3-button b3-button--text" data-action="ai-create-selected" type="button" ${e.some((t) => t.valid) ? "" : "disabled"}>创建选中项</button>
+          <button class="b3-button" data-action="ai-retry" type="button">重新识别</button>
+          <button class="b3-button" data-action="ai-back-edit" type="button">返回编辑</button>
+          <button class="b3-button b3-button--cancel" data-action="ai-close" type="button">取消</button>
+        </div>
+      `;
+    }
+    renderAiDialogContent() {
+      return `
+        <div class="stbc-ai-modal">
+          <div class="stbc-ai-header">
+            <p>输入一句话或粘贴一段文本，我会帮你识别为时间块、倒数日、正向日或纪念日。识别结果需要你确认后才会创建。</p>
+          </div>
+          <textarea class="b3-text-field stbc-ai-textarea" placeholder="- 明天上午 9 点到 11 点背单词
+- 6 月 13 日六级考试，创建倒数日
+- 从 2 月 28 日开始考研复习，创建正向日
+- 粘贴一段考试安排，我会批量识别"></textarea>
+          <div class="stbc-ai-actions">
+            <button class="b3-button b3-button--text" data-action="ai-parse" type="button">AI 识别</button>
+            <button class="b3-button" data-action="ai-clear" type="button">清空</button>
+            <button class="b3-button b3-button--cancel" data-action="ai-close" type="button">关闭</button>
+          </div>
+          <div class="stbc-ai-loading" hidden>AI 正在识别...</div>
+          <div class="stbc-ai-preview" hidden></div>
+        </div>
+      `;
+    }
+    openAiDialog() {
+      this.aiDialogOpen = !0;
+      this.rootElement?.querySelector('[data-action="ai-open"]')?.classList.add("is-active");
+      const t = new n.Dialog({
+          title: "AI 快速创建",
+          content: this.renderAiDialogContent(),
+          width: "720px",
+        }),
+        e = t.element;
+      e?.classList.add("stbc-ai-dialog");
+      e?.addEventListener("click", (t) => t.stopPropagation());
+      e?.querySelector(".b3-dialog__close")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeAiDialog(t);
+      }, { capture: true });
+      this.bindAiDialog(t);
+      e?.querySelector(".stbc-ai-textarea")?.focus();
+    }
+    closeAiDialog(t) {
+      this.aiDialogOpen = !1;
+      this.aiPreviewResult = void 0;
+      this.rootElement?.querySelector('[data-action="ai-open"]')?.classList.remove("is-active");
+      t?.destroy?.();
+    }
+    bindAiDialog(t) {
+      const e = t.element,
+        s = e.querySelector(".stbc-ai-textarea"),
+        a = e.querySelector(".stbc-ai-preview"),
+        i = e.querySelector(".stbc-ai-loading"),
+        o = e.querySelector('[data-action="ai-parse"]');
+      e.querySelectorAll('[data-action="ai-close"]').forEach((e) => e.addEventListener("click", () => this.closeAiDialog(t)));
+      e.querySelector('[data-action="ai-clear"]')?.addEventListener("click", () => {
+        ((s.value = ""), (a.hidden = !0), (a.innerHTML = ""), (this.aiPreviewResult = void 0), s.focus());
+      });
+      const r = async () => {
+        const r = String(s.value || "").trim();
+        if (!r) return void (0, n.showMessage)("请先输入要识别的文本");
+        ((o.disabled = !0), (i.hidden = !1), (a.hidden = !0));
+        try {
+          await this.loadImportantDays();
+          const e = await this.callAiParser(r),
+            n = this.validateAiActions(e);
+          this.aiPreviewResult = n;
+          a.innerHTML = this.renderAiPreviewHTML(n);
+          a.hidden = !1;
+          this.bindAiPreview(t);
+        } catch (t) {
+          (0, n.showMessage)(this.maskAiError(t instanceof Error ? t.message : String(t)));
+        } finally {
+          ((o.disabled = !1), (i.hidden = !0));
+        }
+      };
+      o?.addEventListener("click", r);
+    }
+    bindAiPreview(t) {
+      const e = t.element,
+        s = e.querySelector(".stbc-ai-textarea"),
+        a = e.querySelector(".stbc-ai-preview");
+      a.querySelectorAll('[data-action="ai-color-select"]').forEach((t) => {
+        t.addEventListener("change", () => {
+          const e = this.aiPreviewResult?.actions?.[Number(t.dataset.index || -1)],
+            n = String(t.value || "");
+          if (e && n) {
+            e.color = this.normalizeImportColor(n, e.category || "");
+            t.closest(".stbc-ai-preview-card")?.style.setProperty("--stbc-ai-action-color", e.color);
+          }
+        });
+      });
+      a.querySelectorAll('[data-action="ai-toggle-action"]').forEach((t) => {
+        t.addEventListener("change", () => {
+          const e = this.aiPreviewResult?.actions?.[Number(t.dataset.index || -1)];
+          e && (e.selected = Boolean(t.checked));
+          const n = a.querySelector('[data-action="ai-create-selected"]');
+          n && (n.disabled = !(this.aiPreviewResult?.actions || []).some((t) => t.valid && t.selected));
+        });
+      });
+      a.querySelector('[data-action="ai-back-edit"]')?.addEventListener("click", () => {
+        (a.hidden = !0, s.focus());
+      });
+      a.querySelector('[data-action="ai-retry"]')?.addEventListener("click", () => e.querySelector('[data-action="ai-parse"]')?.click());
+      a.querySelector('[data-action="ai-create-selected"]')?.addEventListener("click", async (s) => {
+        const a = s.currentTarget;
+        a.disabled = !0;
+        try {
+          const s = await this.createSelectedAiActions();
+          this.closeAiDialog(t);
+          this.renderCurrentViewFromState();
+          (0, n.showMessage)(`AI 创建完成：成功 ${s.ok} 项，失败 ${s.fail} 项`);
+        } catch (t) {
+          (a.disabled = !1, (0, n.showMessage)(`AI 创建失败：${t instanceof Error ? t.message : String(t)}`));
+        }
+      });
+    }
+    async createSelectedAiActions() {
+      const t = (this.aiPreviewResult?.actions || []).filter((t) => t.valid && t.selected);
+      if (!t.length) throw new Error("请至少选择一个可创建项目");
+      let e = 0,
+        s = 0,
+        a = "";
+      await this.loadImportantDays();
+      for (const i of t) {
+        try {
+          if ("create_time_block" === i.type) {
+            const t = this.aiTimeToMinutes(i.startTime) - 60 * this.config.dayStartHour,
+              n = this.aiTimeToMinutes(i.endTime) - 60 * this.config.dayStartHour,
+              o = this.normalizeImportColor(i.color || "", i.category),
+              r = await this.createEvent(i.date, t, n, i.title, o, i.category, !1, i.note);
+            (this.events.push(r), a || (a = i.date));
+          } else if ("create_important_day" === i.type) {
+            const t = new Date().toISOString(),
+              n = this.normalizeImportantDay({
+                id: this.generateImportantDayId(),
+                title: i.title,
+                date: i.date,
+                mode: i.mode,
+                theme: i.theme || "blue",
+                category: i.category || "",
+                note: i.note || "",
+                pinned: false,
+                archived: false,
+                notify: false,
+                hideYear: false,
+                source: "ai",
+                createdAt: t,
+                updatedAt: t,
+              });
+            this.importantDaysState.events = [n, ...(this.importantDaysState.events || [])];
+            a || (a = i.date);
+          }
+          e++;
+        } catch (t) {
+          (s++, console.warn("create selected ai action failed", this.maskAiError(t instanceof Error ? t.message : String(t))));
+        }
+      }
+      await this.saveImportantDays();
+      a && (this.currentDate = new Date(`${a}T12:00:00`));
+      return { ok: e, fail: s };
     }
     addPomodoroRecord(t = !0) {
       const e = Math.max(0, this.getPomodoroElapsedSeconds());
@@ -1830,6 +3009,8 @@
       const t = this.rootElement?.querySelector(".stbc-inspector"),
         e = this.rootElement?.querySelector(".stbc-body");
       if (!t || !e) return;
+      if ("important-days" === this.viewMode)
+        return (e.classList.remove("has-inspector"), void (t.innerHTML = ""));
       const event = this.events.find((t) => t.id === this.selectedEventId);
       if ((e.classList.toggle("has-inspector", Boolean(event)), !event))
         return void (t.innerHTML = "");
@@ -3627,138 +4808,7 @@
       return s;
     }
 
-    hexToBytes(t) {
-      const e = String(t || "").replace(/\s+/g, "");
-      if (!e || e.length % 2) throw new Error("iHour 备份内容不是有效的十六进制文本");
-      const n = new Uint8Array(e.length / 2);
-      for (let s = 0; s < n.length; s++) {
-        const a = Number.parseInt(e.slice(2 * s, 2 * s + 2), 16);
-        if (!Number.isFinite(a)) throw new Error("iHour 备份内容不是有效的十六进制文本");
-        n[s] = a;
-      }
-      return n;
-    }
-    decryptIHourBackupHex(t) {
-      const e = this.hexToBytes(t),
-        n = [0x13, 0x01, 0x78, 0x06, 0xe8, 0x55, 0x43, 0x56, 0x00, 0x76, 0xc4, 0xa0, 0x7c, 0x5a, 0x1a, 0xc6];
-      let s = null;
-      try {
-        s = require("crypto");
-      } catch (t) {
-        throw new Error("当前环境不支持直接解密 .ihbak，请在桌面端思源里使用");
-      }
-      const a = s.createDecipheriv("aes-128-ecb", Buffer.from(n), null);
-      a.setAutoPadding(false);
-      const i = Buffer.concat([a.update(Buffer.from(e)), a.final()]).toString("utf8").replace(/\0+$/g, "").trim();
-      if (!i.startsWith("{") && !i.startsWith("[")) throw new Error("iHour 备份解密失败，可能不是当前版本的 .ihbak 文件");
-      return i;
-    }
-    parseIHourBackupText(t) {
-      const e = String(t || "").replace(/^﻿/, "").trim();
-      if (!e) throw new Error("iHour 备份文件为空");
-      const n = e.startsWith("{") || e.startsWith("[") ? e : this.decryptIHourBackupHex(e);
-      return JSON.parse(n);
-    }
-    normalizeIHourDate(t) {
-      const e = String(t || "").trim();
-      if (/^\d{8}$/.test(e)) return `${e.slice(0, 4)}-${e.slice(4, 6)}-${e.slice(6, 8)}`;
-      return this.normalizeImportDate(e);
-    }
-    getIHourEntryTitle(t) {
-      return this.safeBlockText(t?.title || t?.["2"] || t?.name || t?.entryTitle || "未命名项目");
-    }
-    parseIHourRecords(t) {
-      if (!t || "object" != typeof t) throw new Error("iHour 备份不是有效对象");
-      const e = Array.isArray(t.mEntries) ? t.mEntries : Array.isArray(t.entries) ? t.entries : [],
-        n = Array.isArray(t.mEntriesRelations) ? t.mEntriesRelations : Array.isArray(t.relations) ? t.relations : [],
-        s = new Map(),
-        a = new Map();
-      for (const t of e) {
-        const e = String(t?.id || t?.entry_id || t?.entryId || "").trim();
-        e && s.set(e, t);
-      }
-      for (const t of n) {
-        const e = String(t?.subID || t?.["2"] || t?.child_id || t?.childId || "").trim(),
-          n = String(t?.mainID || t?.["1"] || t?.parent_id || t?.parentId || "").trim();
-        e && n && a.set(e, n);
-      }
-      const i = (t, e = new Set()) => {
-        const n = String(t || "");
-        if (!n || e.has(n)) return "";
-        e.add(n);
-        const o = s.get(n),
-          r = this.getIHourEntryTitle(o),
-          c = a.get(n),
-          l = c ? i(c, e) : "";
-        return l ? `${l} / ${r}` : r;
-      };
-      const o = [];
-      for (const t of e) {
-        const e = String(t?.id || t?.entry_id || t?.entryId || "").trim(),
-          n = i(e) || this.getIHourEntryTitle(t),
-          s = Array.isArray(t?.records) ? t.records : Array.isArray(t?.mRecords) ? t.mRecords : [];
-        for (const t of s) {
-          const e = this.normalizeIHourDate(t?.date || t?.["1"] || t?.day || t?.["日期"]),
-            s = Number(t?.minute ?? t?.["4"] ?? t?.minutes ?? 0),
-            a = this.safeBlockText(t?.moodWord || t?.["11"] || t?.note || "");
-          e && Number.isFinite(s) && s > 0 && o.push({ date: e, project: n, minutes: Math.round(s), hours: Math.round((s / 60) * 100) / 100, note: a });
-        }
-      }
-      const r = new Map();
-      for (const t of o) {
-        const e = `${t.date}\n${t.project}\n${t.note || ""}`;
-        if (r.has(e)) {
-          const n = r.get(e);
-          n.minutes += t.minutes;
-          n.hours = Math.round((n.minutes / 60) * 100) / 100;
-        } else r.set(e, { ...t });
-      }
-      const c = Array.from(r.values()).filter((t) => this.normalizeImportDate(t.date)).sort((t, e) => t.date.localeCompare(e.date) || e.minutes - t.minutes),
-        l = new Map(),
-        d = new Map();
-      for (const t of c) {
-        l.set(t.project, (l.get(t.project) || 0) + t.minutes);
-        d.set(t.date, (d.get(t.date) || 0) + t.minutes);
-      }
-      return {
-        records: c,
-        projects: Array.from(l.entries()).map(([t, e]) => ({ project: t, minutes: e, hours: Math.round((e / 60) * 100) / 100 })).sort((t, e) => e.minutes - t.minutes),
-        days: Array.from(d.entries()).map(([t, e]) => ({ date: t, minutes: e, hours: Math.round((e / 60) * 100) / 100 })).sort((t, e) => t.date.localeCompare(e.date)),
-      };
-    }
-    buildIHourExportObject(t, e = "") {
-      const n = this.parseIHourRecords(t),
-        s = n.records.reduce((t, e) => t + Number(e.minutes || 0), 0),
-        a = n.days.length ? n.days[0].date : "",
-        i = n.days.length ? n.days[n.days.length - 1].date : "";
-      return {
-        app: "ihour-json-export",
-        formatVersion: 1,
-        exportedAt: g(new Date()),
-        sourceFile: e,
-        summary: {
-          dateRange: a && i ? `${a} ~ ${i}` : "",
-          days: n.days.length,
-          projects: n.projects.length,
-          records: n.records.length,
-          totalMinutes: s,
-          totalHours: Math.round((s / 60) * 100) / 100,
-        },
-        records: n.records,
-        projectSummary: n.projects,
-        dailySummary: n.days,
-        raw: t,
-      };
-    }
-    async exportIHourBackupAsJson(t) {
-      const e = await this.readTextFile(t),
-        s = this.parseIHourBackupText(e),
-        a = this.buildIHourExportObject(s, t?.name || "ihour.ihbak"),
-        i = new Date(),
-        o = `ihour-export-${p(i)}-${v(i.getHours())}${v(i.getMinutes())}.json`;
-      this.downloadTextFile(o, JSON.stringify(a, null, 2));
-      return a.summary;
-    }
+
 
     openImportDialog() {
       const t = new n.Dialog({
@@ -3935,7 +4985,9 @@
       (this.rootElement
         ?.querySelector('[data-action="view"]')
         ?.addEventListener("change", (t) => {
-          ((this.viewMode = t.target.value), this.render());
+          ((this.viewMode = t.target.value),
+            (this.lastCalendarViewMode = this.viewMode),
+            this.render());
         }),
         this.rootElement
           ?.querySelector('[data-action="today"]')
@@ -3943,9 +4995,27 @@
             ((this.currentDate = new Date()), this.render());
           }),
         this.rootElement
+          ?.querySelector('[data-action="ai-open"]')
+          ?.addEventListener("click", () => this.openAiDialog()),
+        this.rootElement
           ?.querySelector('[data-action="goals"]')
           ?.addEventListener("click", () => {
-            ((this.viewMode = "goals" === this.viewMode ? "month" : "goals"), this.render());
+            "goals" === this.viewMode
+              ? (this.viewMode = this.lastCalendarViewMode || "month")
+              : (["week", "three", "month", "year"].includes(this.viewMode) &&
+                  (this.lastCalendarViewMode = this.viewMode),
+                (this.viewMode = "goals"));
+            this.render();
+          }),
+        this.rootElement
+          ?.querySelector('[data-action="important-days"]')
+          ?.addEventListener("click", () => {
+            "important-days" === this.viewMode
+              ? (this.viewMode = this.lastCalendarViewMode || "week")
+              : (["week", "three", "month", "year"].includes(this.viewMode) &&
+                  (this.lastCalendarViewMode = this.viewMode),
+                (this.viewMode = "important-days"));
+            this.render();
           }),
         this.rootElement
           ?.querySelector('[data-action="prev"]')
