@@ -964,7 +964,7 @@
     }
     sortImportantDays(t) {
       const e = this.normalizeImportantDaysSettings(this.importantDaysState?.settings || {}),
-        s = this.parseImportantDayLocalDate(this.currentDate || new Date()),
+        s = this.parseImportantDayLocalDate(new Date()),
         a = (t) => this.parseImportantDayLocalDate(t.date)?.getTime() || 0,
         i = (t) => Date.parse(t.updatedAt || "") || 0,
         o = (t) => Date.parse(t.createdAt || "") || 0,
@@ -1027,7 +1027,7 @@
       const e = this.importantDaysState || this.defaultImportantDaysState(),
         n = this.normalizeImportantDaysSettings(e.settings || {}),
         s = e.events || [],
-        a = this.parseImportantDayLocalDate(this.currentDate || new Date()),
+        a = this.parseImportantDayLocalDate(new Date()),
         i = this.sortImportantDays(this.filterImportantDays(s, n)),
         o = s.filter((t) => !t.archived),
         r = {
@@ -1395,9 +1395,10 @@
 当前所在周是：${t.weekRange || ""}
 当前插件时区按用户本地时间处理。
 
-你需要识别两类动作：
-1. create_time_block，用于创建时间块或日程，必须包含 title、date、startTime、endTime。
-2. create_important_day，用于创建倒数日、正向日、纪念日、已过天数，必须包含 title、date、mode。
+你需要识别三类动作：
+1. create_time_block，用于创建有明确开始/结束时间的时间块或日程，必须包含 title、date、startTime、endTime。
+2. create_all_day_event，用于创建全天事件，必须包含 title、date，不要包含 startTime、endTime。
+3. create_important_day，用于创建倒数日、正向日、纪念日、已过天数，必须包含 title、date、mode。
 
 mode 规则：
 - 如果用户说“倒数”“还有几天”“考试”“截止”“DDL”，通常用 countdown。
@@ -1415,7 +1416,9 @@ mode 规则：
 - 上午 9 点 = 09:00，下午 2 点 = 14:00，晚上 8 点 = 20:00。
 - 如果用户给了开始时间但没给结束时间，默认持续 60 分钟，并在 note 中说明“AI 默认时长 60 分钟”。
 - 如果没有明确开始时间，不要创建 create_time_block，可以改为 questions 询问。
-- 如果只有日期没有具体时间，更适合 create_important_day。
+- 如果用户明确说“全天事件”“全日事件”“整天”“全天”，必须创建 create_all_day_event，不要创建 00:00-23:59 的 create_time_block。
+- 如果用户说“6.8-6.30 每天各创建一个 X 的全天事件”这类日期范围每天重复，请返回 1 个 create_all_day_event，并设置 date 为开始日期、endDate 为结束日期、repeat 为 daily；不要把它当成一个持续 23 天的单个事件。
+- 如果只有日期没有具体时间，且不是全天事件，更适合 create_important_day。
 
 分类推断：
 - 六级、英语、单词、翻译、作文 -> 英语 / 考试
@@ -1427,13 +1430,15 @@ mode 规则：
 
 输出要求：
 - 只返回合法 JSON。
-- actions 最多返回 20 条。
+- actions 最多返回 60 条。
 - 每个 action 都要有 confidence，范围 0 到 1。
 - 不确定的信息不要编造，放到 questions 中。
 - 不要直接说创建成功，因为你只是解析器。
 
 JSON 格式：
-{"summary":"识别到 1 个待创建项目","needConfirm":true,"actions":[{"type":"create_time_block","title":"背单词","date":"2026-06-06","startTime":"09:00","endTime":"11:00","category":"英语","note":"","sourceText":"明天上午9点到11点背单词","confidence":0.92}],"questions":[]}`;
+{"summary":"识别到 1 个待创建项目","needConfirm":true,"actions":[{"type":"create_time_block","title":"背单词","date":"2026-06-06","startTime":"09:00","endTime":"11:00","category":"英语","note":"","sourceText":"明天上午9点到11点背单词","confidence":0.92}],"questions":[]}
+全天事件示例：
+{"summary":"识别到 23 个全天事件","needConfirm":true,"actions":[{"type":"create_all_day_event","title":"❌","date":"2026-06-08","endDate":"2026-06-30","repeat":"daily","category":"","note":"","sourceText":"6.8-6.30 每天各创建一个❌的全天事件","confidence":0.95}],"questions":[]}`;
     }
     async requestAiChat(t, e = {}) {
       const s = this.validateAiConfig(),
@@ -1530,8 +1535,60 @@ JSON 格式：
       const e = String(t || "").match(/^(\d{2}):(\d{2})$/);
       return e ? 60 * Number(e[1]) + Number(e[2]) : NaN;
     }
+    isAiAllDayActionType(t) {
+      return ["create_all_day_event", "create_all_day", "create_all_day_block", "create_full_day_event"].includes(String(t || ""));
+    }
+    normalizeAiActionType(t = {}) {
+      const e = String(t?.type || "").trim(),
+        n = `${t?.sourceText || ""} ${t?.title || ""} ${t?.note || ""}`,
+        s = /全天|全日|整天|all[-\s]?day/i.test(n),
+        a = /全天|全日|整天|all[-\s]?day/i.test(String(this.aiLastInputText || "")),
+        i = String(t?.startTime || "").trim(),
+        o = String(t?.endTime || "").trim(),
+        r = Boolean(i || o),
+        c = "00:00" === i && ["23:59", "24:00", "00:00"].includes(o),
+        l = !0 === t?.allDay || /^(true|1|yes|y|是)$/i.test(String(t?.allDay || "")) || s || (a && (!r || c));
+      if (this.isAiAllDayActionType(e)) return "create_all_day_event";
+      if (l && "create_time_block" === e) return "create_all_day_event";
+      return e;
+    }
+    isAiCalendarEventAction(t) {
+      return "create_time_block" === t?.type || "create_all_day_event" === t?.type;
+    }
+    getAiDateRangeDays(t, e) {
+      const n = this.parseImportantDayLocalDate(t),
+        s = this.parseImportantDayLocalDate(e);
+      if (!n || !s) return 1;
+      if (s < n) return 0;
+      return Math.max(1, Math.round((s.getTime() - n.getTime()) / 864e5) + 1);
+    }
+    shouldExpandAiAllDayRange(t = {}) {
+      const e = `${t.repeat || ""} ${t.recurrence || ""} ${t.frequency || ""}`.toLowerCase(),
+        n = `${t.sourceText || ""} ${this.aiLastInputText || ""}`;
+      return !0 === t.eachDay || !0 === t.everyDay || e.includes("daily") || e.includes("day") || /每天|每日|每一天|逐日|各创建/.test(n);
+    }
+    expandAiRawActions(t = []) {
+      const e = [];
+      for (const n of t) {
+        if (e.length >= 60) break;
+        const s = n && "object" == typeof n ? n : {},
+          a = this.normalizeAiActionType(s),
+          i = String(s.date || s.startDate || s.beginDate || "").trim(),
+          o = String(s.endDate || s.dateEnd || s.until || s.finishDate || "").trim();
+        if ("create_all_day_event" === a && i && o && this.shouldExpandAiAllDayRange(s) && this.isValidAiDate(i) && this.isValidAiDate(o)) {
+          const t = this.parseImportantDayLocalDate(i),
+            n = Math.min(60 - e.length, this.getAiDateRangeDays(i, o));
+          for (let i = 0; i < n; i++)
+            e.push({ ...s, type: "create_all_day_event", date: p(m(t, i)), endDate: "", repeat: "", sourceText: s.sourceText || this.aiLastInputText || "" });
+          continue;
+        }
+        e.push({ ...s, type: a, date: i || String(s.date || "").trim(), endDate: o });
+      }
+      return e.slice(0, 60);
+    }
     getAiActionTypeLabel(t) {
       if ("create_time_block" === t.type) return "时间块";
+      if ("create_all_day_event" === t.type) return "全天事件";
       const e = { countdown: "倒数日", countup: "正向日", anniversary: "纪念日", elapsed: "已过天数" };
       return e[t.mode] || "倒数日";
     }
@@ -1541,19 +1598,21 @@ JSON 格式：
     }
     validateAiActions(t) {
       if (!t || "object" != typeof t || Array.isArray(t)) throw new Error("AI 返回格式不正确，请重试");
-      const e = Array.isArray(t.actions) ? t.actions.slice(0, 20) : [],
+      const rawActions = Array.isArray(t.actions) ? t.actions : [],
+        e = this.expandAiRawActions(rawActions),
         n = Array.isArray(t.questions) ? t.questions.map((t) => String(t || "").trim()).filter(Boolean) : [],
         s = e.map((t, e) => {
           const s = t && "object" == typeof t ? t : {},
             a = [],
             i = [],
-            o = String(s.type || ""),
+            o = this.normalizeAiActionType(s),
             r = {
               index: e,
               raw: s,
               type: o,
               title: this.safeBlockText(s.title || ""),
-              date: String(s.date || "").trim(),
+              date: String(s.date || s.startDate || s.beginDate || "").trim(),
+              endDate: String(s.endDate || s.dateEnd || s.until || s.finishDate || "").trim(),
               startTime: String(s.startTime || "").trim(),
               endTime: String(s.endTime || "").trim(),
               mode: String(s.mode || "").trim(),
@@ -1576,6 +1635,13 @@ JSON 格式：
             const t = this.aiTimeToMinutes(r.startTime),
               e = this.aiTimeToMinutes(r.endTime);
             if (!Number.isNaN(t) && !Number.isNaN(e) && e <= t) a.push("结束时间必须晚于开始时间");
+          } else if ("create_all_day_event" === o) {
+            if (!r.title) a.push("缺少标题");
+            if (!this.isValidAiDate(r.date)) a.push("日期必须是 YYYY-MM-DD");
+            if (r.endDate) {
+              if (!this.isValidAiDate(r.endDate)) a.push("结束日期必须是 YYYY-MM-DD");
+              else if (this.getAiDateRangeDays(r.date, r.endDate) < 1) a.push("结束日期必须不早于开始日期");
+            }
           } else if ("create_important_day" === o) {
             if (!r.title) a.push("缺少标题");
             if (!this.isValidAiDate(r.date)) a.push("日期必须是 YYYY-MM-DD");
@@ -1589,7 +1655,7 @@ JSON 格式：
           return r;
         });
       return {
-        summary: String(t.summary || (s.length ? `识别到 ${s.length} 个待创建项目` : "没有识别到可创建的时间项目")),
+        summary: String(rawActions.length !== s.length || !t.summary ? (s.length ? `识别到 ${s.length} 个待创建项目` : "没有识别到可创建的时间项目") : t.summary),
         needConfirm: !1 !== t.needConfirm,
         questions: n,
         actions: s,
@@ -1602,13 +1668,19 @@ JSON 格式：
           s = (this.events || []).find((s) => p(s.start) === t.date && !s.allDay && this.aiTimeToMinutes(f(s.start)) < n && this.aiTimeToMinutes(f(s.end)) > e);
         s && t.warnings.push(`可能与“${s.title || "已有时间块"}”发生时间冲突`);
       }
+      if ("create_all_day_event" === t.type && this.isValidAiDate(t.date)) {
+        const e = this.parseImportantDayLocalDate(t.date),
+          n = m(e, this.getAiDateRangeDays(t.date, t.endDate || t.date)),
+          s = (this.events || []).some((s) => s.allDay && String(s.title || "").trim() === t.title && s.start < n && s.end > e);
+        s && t.warnings.push("可能重复");
+      }
       if ("create_important_day" === t.type && this.isValidAiDate(t.date)) {
         const e = (this.importantDaysState?.events || []).some((e) => String(e.title || "").trim() === t.title && e.date === t.date && e.mode === t.mode);
         e && t.warnings.push("可能重复");
       }
     }
     renderAiActionColorPickerHTML(t) {
-      if (!t || "create_time_block" !== t.type || !t.valid) return "";
+      if (!t || !this.isAiCalendarEventAction(t) || !t.valid) return "";
       const e = this.normalizeImportColor(t.color || "", t.category || ""),
         n = `stbc-ai-action-color-${t.index}`,
         s = r
@@ -1634,7 +1706,7 @@ JSON 格式：
             const e = t.valid ? t.warnings.length ? "stbc-ai-preview-card-warning" : "" : "stbc-ai-preview-card-error",
               n = t.warnings.concat(t.errors).map((t) => `<li>${y(t)}</li>`).join("");
             return `
-              <article class="stbc-ai-preview-card ${e}" data-index="${t.index}" style="${"create_time_block" === t.type ? `--stbc-ai-action-color:${y(this.normalizeImportColor(t.color || "", t.category || ""))};` : ""}">
+              <article class="stbc-ai-preview-card ${e}" data-index="${t.index}" style="${this.isAiCalendarEventAction(t) ? `--stbc-ai-action-color:${y(this.normalizeImportColor(t.color || "", t.category || ""))};` : ""}">
                 <label class="stbc-ai-preview-check">
                   <input data-action="ai-toggle-action" data-index="${t.index}" type="checkbox" ${t.selected ? "checked" : ""} ${t.valid ? "" : "disabled"} />
                   <span>${y(t.valid ? this.getAiActionTypeLabel(t) : "无法创建")}</span>
@@ -1643,11 +1715,11 @@ JSON 格式：
                   <h4>${y(t.title || "未命名")}</h4>
                   <div class="stbc-ai-preview-meta">
                     <span>${y(t.date || "缺少日期")}</span>
-                    ${"create_time_block" === t.type ? `<span>${y(t.startTime || "--:--")} - ${y(t.endTime || "--:--")}</span>` : `<span>${y(this.getAiActionTypeLabel(t))}</span>`}
+                    ${"create_time_block" === t.type ? `<span>${y(t.startTime || "--:--")} - ${y(t.endTime || "--:--")}</span>` : "create_all_day_event" === t.type ? `<span>${y(t.endDate ? `全天 · 至 ${t.endDate}` : "全天")}</span>` : `<span>${y(this.getAiActionTypeLabel(t))}</span>`}
                     ${t.category ? `<span>${y(t.category)}</span>` : ""}
                     <span class="stbc-ai-confidence">置信度 ${Math.round(100 * t.confidence)}%</span>
                   </div>
-                  ${"create_time_block" === t.type ? this.renderAiActionColorPickerHTML(t) : ""}
+                  ${this.isAiCalendarEventAction(t) ? this.renderAiActionColorPickerHTML(t) : ""}
                   ${t.note ? `<p>${y(t.note)}</p>` : ""}
                   ${t.sourceText ? `<div class="stbc-ai-source">原文：${y(t.sourceText)}</div>` : ""}
                   ${n ? `<ul class="stbc-ai-warning-list">${n}</ul>` : ""}
@@ -1675,9 +1747,10 @@ JSON 格式：
       return `
         <div class="stbc-ai-modal">
           <div class="stbc-ai-header">
-            <p>输入一句话或粘贴一段文本，我会帮你识别为时间块、倒数日、正向日或纪念日。识别结果需要你确认后才会创建。</p>
+            <p>输入一句话或粘贴一段文本，我会帮你识别为时间块、全天事件、倒数日、正向日或纪念日。识别结果需要你确认后才会创建。</p>
           </div>
           <textarea class="b3-text-field stbc-ai-textarea" placeholder="- 明天上午 9 点到 11 点背单词
+- 6.8-6.30 每天各创建一个❌的全天事件
 - 6 月 13 日六级考试，创建倒数日
 - 从 2 月 28 日开始考研复习，创建正向日
 - 粘贴一段考试安排，我会批量识别"></textarea>
@@ -1729,6 +1802,7 @@ JSON 格式：
       const r = async () => {
         const r = String(s.value || "").trim();
         if (!r) return void (0, n.showMessage)("请先输入要识别的文本");
+        this.aiLastInputText = r;
         ((o.disabled = !0), (i.hidden = !1), (a.hidden = !0));
         try {
           await this.loadImportantDays();
@@ -1800,6 +1874,20 @@ JSON 格式：
               o = this.normalizeImportColor(i.color || "", i.category),
               r = await this.createEvent(i.date, t, n, i.title, o, i.category, !1, i.note);
             (this.events.push(r), a || (a = i.date));
+          } else if ("create_all_day_event" === i.type) {
+            const t = this.getAiDateRangeDays(i.date, i.endDate || i.date),
+              n = this.normalizeImportColor(i.color || "", i.category),
+              o = await this.createEvent(
+                i.date,
+                60 * -this.config.dayStartHour,
+                24 * t * 60 - 60 * this.config.dayStartHour,
+                i.title,
+                n,
+                i.category,
+                !0,
+                i.note,
+              );
+            (this.events.push(o), a || (a = i.date));
           } else if ("create_important_day" === i.type) {
             const t = new Date().toISOString(),
               n = this.normalizeImportantDay({
@@ -1985,7 +2073,13 @@ JSON 格式：
         n = t.end instanceof Date ? t.end : t.end ? new Date(t.end) : null,
         s = [];
       s.push(t.title || "时间块");
-      e && !Number.isNaN(e.getTime()) && n && !Number.isNaN(n.getTime()) && s.push(`${p(e)} ${f(e)} - ${p(n)} ${f(n)}`);
+      if (e && !Number.isNaN(e.getTime()) && n && !Number.isNaN(n.getTime())) {
+        if (t.allDay) {
+          const a = this.getAllDayInclusiveEndDate(n),
+            i = a && !Number.isNaN(a.getTime()) ? p(a) : p(e);
+          s.push(i === p(e) ? `${p(e)} 全天` : `${p(e)} - ${i} 全天`);
+        } else s.push(`${p(e)} ${f(e)} - ${p(n)} ${f(n)}`);
+      }
       t.label && s.push(`标签：${t.label}`);
       s.push(`状态：${"done" === t.status ? "已完成" : "未完成"}`);
       t.reminderEnabled && t.reminderTime && s.push(`提醒：${this.getReminderText(t)}`);
@@ -2730,7 +2824,7 @@ JSON 格式：
                 n = "done" === t.status;
               return `<div class="stbc-month-event ${n ? "is-done" : ""} ${t.id === this.selectedEventId ? "is-selected" : ""}" data-id="${t.id}" title="${y(this.getEventHoverText(t))}" style="--stbc-event-color:${e.value};--stbc-event-bg:${e.bg};--stbc-event-text:${e.text};">
               <button class="stbc-month-status ${n ? "is-done" : ""}" data-action="toggle-status" type="button" title="${n ? "标记未完成" : "标记完成"}" aria-label="${n ? "标记未完成" : "标记完成"}">${n ? "✓" : ""}</button>
-              <span>${f(t.start)} ${y(t.title)}</span>
+              <span>${t.allDay ? "全天" : f(t.start)} ${y(t.title)}</span>
               ${t.label ? `<em>${y(t.label)}</em>` : ""}
               ${t.reminderEnabled && t.reminderTime && "true" !== t.reminderFired ? `<em>⏰ ${y(this.getReminderText(t))}</em>` : ""}
             </div>`;
@@ -3017,10 +3111,77 @@ JSON 格式：
       const colorMeta = l(event.color),
         colorChoices = r
           .map(
-            (t) => `\n            <label class="stbc-color-choice stbc-inspector-color-choice" title="${t.name}">\n              <input type="radio" name="stbc-inspector-color" value="${t.value}" ${t.value === colorMeta.value ? "checked" : ""} />\n              <span style="--stbc-choice-color:${t.value};--stbc-choice-bg:${t.bg};"></span>\n            </label>`,
+            (t) => `
+            <label class="stbc-color-choice stbc-inspector-color-choice" title="${t.name}">
+              <input type="radio" name="stbc-inspector-color" value="${t.value}" ${t.value === colorMeta.value ? "checked" : ""} />
+              <span style="--stbc-choice-color:${t.value};--stbc-choice-bg:${t.bg};"></span>
+            </label>`,
           )
-          .join("");
-      ((t.innerHTML = `\n      <div class="stbc-inspector-card stbc-inspector-card--edit">\n        <div class="stbc-inspector-head">\n          <div>\n            <div class="stbc-inspector-kicker">事件块</div>\n            <input class="b3-text-field stbc-inspector-title-input" value="${y(event.title)}" aria-label="事件标题" />\n          </div>\n          <button class="stbc-inspector-close" data-action="inspector-close" type="button" aria-label="关闭">×</button>\n        </div>\n        <div class="stbc-inspector-edit-grid">\n          <label class="stbc-inspector-field">\n            <span>开始日期</span>\n            <input class="b3-text-field stbc-inspector-start-date" type="date" value="${p(event.start)}" />\n          </label>\n          <label class="stbc-inspector-field">\n            <span>开始时间</span>\n            <input class="b3-text-field stbc-inspector-start-time" type="time" value="${f(event.start)}" />\n          </label>\n          <label class="stbc-inspector-field">\n            <span>结束日期</span>\n            <input class="b3-text-field stbc-inspector-end-date" type="date" value="${p(event.end)}" />\n          </label>\n          <label class="stbc-inspector-field">\n            <span>结束时间</span>\n            <input class="b3-text-field stbc-inspector-end-time" type="time" value="${f(event.end)}" />\n          </label>\n        </div>\n        ${this.renderLabelPickerHTML(event.label || "")}\n        <div class="stbc-inspector-row stbc-inspector-color-row">\n          <span>颜色</span>\n          <div class="stbc-color-grid stbc-inspector-color-grid">${colorChoices}</div>\n        </div>\n        <div class="stbc-inspector-row">\n          <span>状态</span>\n          <div class="stbc-status-toggle stbc-inspector-status-toggle" data-value="${"done" === event.status ? "done" : "todo"}">\n            <button class="${"done" !== event.status ? "is-active" : ""}" data-status="todo" type="button">未完成</button>\n            <button class="${"done" === event.status ? "is-active" : ""}" data-status="done" type="button">已完成</button>\n          </div>\n        </div>\n        <div class="stbc-inspector-row stbc-inspector-reminder-row">
+          .join(""),
+        isAllDayEvent = Boolean(event.allDay),
+        allDayEndDate = (() => {
+          const t = new Date(event.end);
+          if (t > event.start && "00:00" === f(t)) t.setDate(t.getDate() - 1);
+          return t < event.start ? p(event.start) : p(t);
+        })(),
+        timeEditorHTML = isAllDayEvent
+          ? `
+        <div class="stbc-inspector-edit-grid stbc-inspector-edit-grid--all-day">
+          <label class="stbc-inspector-field">
+            <span>日期</span>
+            <input class="b3-text-field stbc-inspector-all-day-start-date" type="date" value="${p(event.start)}" />
+          </label>
+          <label class="stbc-inspector-field">
+            <span>结束日期</span>
+            <input class="b3-text-field stbc-inspector-all-day-end-date" type="date" value="${allDayEndDate}" />
+          </label>
+        </div>
+        <div class="stbc-inspector-row stbc-inspector-all-day-row">
+          <span>类型</span>
+          <strong>全天事件</strong>
+        </div>`
+          : `
+        <div class="stbc-inspector-edit-grid">
+          <label class="stbc-inspector-field">
+            <span>开始日期</span>
+            <input class="b3-text-field stbc-inspector-start-date" type="date" value="${p(event.start)}" />
+          </label>
+          <label class="stbc-inspector-field">
+            <span>开始时间</span>
+            <input class="b3-text-field stbc-inspector-start-time" type="time" value="${f(event.start)}" />
+          </label>
+          <label class="stbc-inspector-field">
+            <span>结束日期</span>
+            <input class="b3-text-field stbc-inspector-end-date" type="date" value="${p(event.end)}" />
+          </label>
+          <label class="stbc-inspector-field">
+            <span>结束时间</span>
+            <input class="b3-text-field stbc-inspector-end-time" type="time" value="${f(event.end)}" />
+          </label>
+        </div>`;
+      ((t.innerHTML = `
+      <div class="stbc-inspector-card stbc-inspector-card--edit">
+        <div class="stbc-inspector-head">
+          <div>
+            <div class="stbc-inspector-kicker">${isAllDayEvent ? "全天事件" : "事件块"}</div>
+            <input class="b3-text-field stbc-inspector-title-input" value="${y(event.title)}" aria-label="事件标题" />
+          </div>
+          <button class="stbc-inspector-close" data-action="inspector-close" type="button" aria-label="关闭">×</button>
+        </div>
+        ${timeEditorHTML}
+        ${this.renderLabelPickerHTML(event.label || "")}
+        <div class="stbc-inspector-row stbc-inspector-color-row">
+          <span>颜色</span>
+          <div class="stbc-color-grid stbc-inspector-color-grid">${colorChoices}</div>
+        </div>
+        <div class="stbc-inspector-row">
+          <span>状态</span>
+          <div class="stbc-status-toggle stbc-inspector-status-toggle" data-value="${"done" === event.status ? "done" : "todo"}">
+            <button class="${"done" !== event.status ? "is-active" : ""}" data-status="todo" type="button">未完成</button>
+            <button class="${"done" === event.status ? "is-active" : ""}" data-status="done" type="button">已完成</button>
+          </div>
+        </div>
+        <div class="stbc-inspector-row stbc-inspector-reminder-row">
           <span>提醒</span>
           <button class="stbc-reminder-edit-button" data-action="inspector-reminder" type="button">${y(this.getReminderText(event))}</button>
         </div>
@@ -3028,10 +3189,15 @@ JSON 格式：
           <span>备注：</span>
           <textarea class="b3-text-field stbc-inspector-note-input" rows="3" placeholder="写点备注，鼠标悬停时间块时会显示">${y(event.note || "")}</textarea>
         </label>
-        <div class="stbc-inspector-actions">\n          <button class="b3-button b3-button--cancel" data-action="inspector-reset" type="button">重置</button>\n          <button class="b3-button b3-button--text" data-action="inspector-save" type="button">保存修改</button>\n        </div>\n      </div>\n    `),
+        <div class="stbc-inspector-actions">
+          <button class="b3-button b3-button--cancel" data-action="inspector-reset" type="button">重置</button>
+          <button class="b3-button b3-button--text" data-action="inspector-save" type="button">保存修改</button>
+        </div>
+      </div>
+    `),
         this.bindLabelPicker(t),
         this.animateInspectorEntrance(t.querySelector(".stbc-inspector-card")),
-        (() => {
+        (!isAllDayEvent && (() => {
           const editGrid = t.querySelector(".stbc-inspector-edit-grid"),
             durationRow = document.createElement("div"),
             durationValue = document.createElement("strong"),
@@ -3059,7 +3225,7 @@ JSON 格式：
             updateDuration();
             durationInputs.forEach((input) => input.addEventListener("input", updateDuration));
           }
-        })(),
+        })()),
         t
           .querySelector('[data-action="inspector-close"]')
           ?.addEventListener("click", () => {
@@ -3105,20 +3271,33 @@ JSON 格式：
               const title = String(
                   t.querySelector(".stbc-inspector-title-input")?.value || "",
                 ).trim() || "新时间块",
-                startDate = String(t.querySelector(".stbc-inspector-start-date")?.value || p(event.start)),
-                startTime = String(t.querySelector(".stbc-inspector-start-time")?.value || f(event.start)),
-                endDate = String(t.querySelector(".stbc-inspector-end-date")?.value || p(event.end)),
-                endTime = String(t.querySelector(".stbc-inspector-end-time")?.value || f(event.end)),
-                start = this.dateTimeInputToDate(startDate, startTime),
-                end = this.dateTimeInputToDate(endDate, endTime),
                 color = String(
                   t.querySelector('input[name="stbc-inspector-color"]:checked')?.value || event.color || c.value,
                 ),
                 note = String(t.querySelector(".stbc-inspector-note-input")?.value || "").trim(),
                 label = await this.resolveDialogLabel(t),
                 status = "done" === t.querySelector(".stbc-inspector-status-toggle")?.dataset.value ? "done" : "todo";
-              if (!start || !end) return void (0, n.showMessage)("请填写有效的开始和结束时间");
-              if (end <= start) return void (0, n.showMessage)("结束时间必须晚于开始时间");
+              let start, end;
+              if (isAllDayEvent) {
+                const startDate = String(t.querySelector(".stbc-inspector-all-day-start-date")?.value || p(event.start)),
+                  endDate = String(t.querySelector(".stbc-inspector-all-day-end-date")?.value || allDayEndDate),
+                  startLocal = this.parseImportantDayLocalDate(startDate),
+                  endLocal = this.parseImportantDayLocalDate(endDate);
+                if (!startLocal || !endLocal) return void (0, n.showMessage)("请填写有效日期");
+                if (endLocal < startLocal) return void (0, n.showMessage)("结束日期不能早于开始日期");
+                const spanDays = this.getAiDateRangeDays(startDate, endDate);
+                start = this.minutesToDate(startDate, 60 * -this.config.dayStartHour);
+                end = this.minutesToDate(startDate, 24 * spanDays * 60 - 60 * this.config.dayStartHour);
+              } else {
+                const startDate = String(t.querySelector(".stbc-inspector-start-date")?.value || p(event.start)),
+                  startTime = String(t.querySelector(".stbc-inspector-start-time")?.value || f(event.start)),
+                  endDate = String(t.querySelector(".stbc-inspector-end-date")?.value || p(event.end)),
+                  endTime = String(t.querySelector(".stbc-inspector-end-time")?.value || f(event.end));
+                start = this.dateTimeInputToDate(startDate, startTime);
+                end = this.dateTimeInputToDate(endDate, endTime);
+                if (!start || !end) return void (0, n.showMessage)("请填写有效的开始和结束时间");
+                if (end <= start) return void (0, n.showMessage)("结束时间必须晚于开始时间");
+              }
               await this.updateEventFromInspector(event.id, {
                 title,
                 start,
@@ -4203,6 +4382,22 @@ JSON 格式：
       const s = new Date(Number(n[1]), Number(n[2]) - 1, Number(n[3]), Number(n[4]), Number(n[5]), 0, 0);
       return Number.isNaN(s.getTime()) ? null : s;
     }
+    parseAllDayDateCell(t, e = !1) {
+      const n = String(t || "").trim().replace("T", " "),
+        s = n.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+      if (s) {
+        const t = new Date(Number(s[1]), Number(s[2]) - 1, Number(s[3]), 0, 0, 0, 0);
+        if (Number.isNaN(t.getTime())) return null;
+        return e ? m(t, 1) : t;
+      }
+      return this.parseEventDateTimeCell(n);
+    }
+    getAllDayInclusiveEndDate(t) {
+      const e = t instanceof Date ? new Date(t) : t ? new Date(t) : null;
+      if (!e || Number.isNaN(e.getTime())) return null;
+      if ("00:00" === f(e)) e.setDate(e.getDate() - 1);
+      return e;
+    }
     getStatusText(t) {
       return "done" === t ? "已完成" : "未完成";
     }
@@ -4233,37 +4428,40 @@ JSON 格式：
     eventFromTableRow(t, e, n) {
       const s = this.getHorizontalEventHeaders(),
         a = Object.fromEntries(s.map((t, e) => [t, n[e] ?? ""])),
-        i = this.parseEventDateTimeCell(a["开始时间"]),
-        o = this.parseEventDateTimeCell(a["结束时间"]);
-      if (!i || !o) return null;
-      const r = this.parseReminderCell(a["提醒"], i);
-      const l = {
+        i = this.parseAllDayText(a["全天事件"]),
+        o = i ? this.parseAllDayDateCell(a["开始时间"], !1) : this.parseEventDateTimeCell(a["开始时间"]),
+        r = i ? this.parseAllDayDateCell(a["结束时间"], !0) : this.parseEventDateTimeCell(a["结束时间"]);
+      if (!o || !r) return null;
+      const l = this.parseReminderCell(a["提醒"], o);
+      const d = {
         id: this.makeTableRowEventId(t, e),
         recordBlockId: t,
         rowIndex: e,
         title: this.safeBlockText(a["事件"]) || "未命名",
-        start: i,
-        end: o,
+        start: o,
+        end: r,
         color: /^#[0-9a-fA-F]{6}$/.test(String(a["颜色"] || "")) ? String(a["颜色"]).trim() : c.value,
         label: String(a["标签"] || "").trim(),
         note: String(a["备注"] || "").trim(),
         status: this.parseStatusText(a["状态"]),
-        allDay: this.parseAllDayText(a["全天事件"]),
-        ...r,
+        allDay: i,
+        ...l,
       };
-      return this.applyTableReminderFiredState(l);
+      return this.applyTableReminderFiredState(d);
     }
     getEventRowValues(t = {}) {
       const e = t.start instanceof Date ? t.start : t.start ? new Date(t.start) : null,
-        n = t.end instanceof Date ? t.end : t.end ? new Date(t.end) : null;
+        n = t.end instanceof Date ? t.end : t.end ? new Date(t.end) : null,
+        s = Boolean(t.allDay),
+        a = s && n ? this.getAllDayInclusiveEndDate(n) : n;
       return [
         t.title || "新时间块",
-        this.formatEventDateTime(e),
-        this.formatEventDateTime(n),
+        s ? e && !Number.isNaN(e.getTime()) ? p(e) : "" : this.formatEventDateTime(e),
+        s ? a && !Number.isNaN(a.getTime()) ? p(a) : "" : this.formatEventDateTime(n),
         t.label || "",
         t.color || c.value,
         this.getStatusText("done" === t.status ? "done" : "todo"),
-        this.getAllDayText(Boolean(t.allDay)),
+        this.getAllDayText(s),
         t.reminderEnabled ? this.getReminderText(t) : "不提醒",
         t.note || "",
       ];
@@ -5314,13 +5512,22 @@ JSON 格式：
       if (gutter) {
         const badge = document.createElement("div");
         badge.className = "stbc-now-time stbc-now-time--gutter";
-        badge.style.top = `${(o / a) * c}px`;
+        // anchor the badge's vertical center to the line's actually rendered
+        // position so they stay pixel-aligned regardless of rounding/borders
+        const badgeTop = Number.isFinite(d.offsetTop) ? d.offsetTop - timelineTop : (o / a) * c;
+        badge.style.top = `${badgeTop}px`;
         badge.textContent = f(t);
         gutter.appendChild(badge);
       }
     }
     queueNowLineUpdate() {
       this.rootElement?.querySelectorAll(".stbc-now-line, .stbc-now-time--gutter").forEach((t) => t.remove());
+      if (this.rootElement && this._nowLineResizeObsTarget !== this.rootElement) {
+        this._nowLineResizeObs?.disconnect();
+        this._nowLineResizeObs = new ResizeObserver(() => this.queueNowLineUpdate());
+        this._nowLineResizeObs.observe(this.rootElement);
+        this._nowLineResizeObsTarget = this.rootElement;
+      }
       const t = () => this.updateNowLine();
       ("function" == typeof window.requestAnimationFrame
         ? window.requestAnimationFrame(() => window.requestAnimationFrame(t))
@@ -5349,7 +5556,10 @@ JSON 格式：
           (window.removeEventListener("focus", this.nowLineWakeHandler),
           window.removeEventListener("resize", this.nowLineWakeHandler),
           document.removeEventListener("visibilitychange", this.nowLineWakeHandler),
-          (this.nowLineWakeHandler = void 0)));
+          (this.nowLineWakeHandler = void 0)),
+        this._nowLineResizeObs?.disconnect(),
+        (this._nowLineResizeObs = void 0),
+        (this._nowLineResizeObsTarget = void 0));
     }
     bindColumn(t) {
       let e,
@@ -5555,7 +5765,7 @@ JSON 格式：
           const s = m(e, n),
             a = p(s),
             i = this.events.filter((t) => p(t.start) === a);
-          return `\n        <div class="stbc-month-day ${a === p(new Date()) ? "is-today" : ""}" data-date="${a}">\n          <div class="stbc-month-num">${s.getDate()}</div>\n          ${i.map((t) => `<div class="stbc-month-event" data-id="${t.id}">${f(t.start)} ${y(t.title)}</div>`).join("")}\n        </div>\n      `;
+          return `\n        <div class="stbc-month-day ${a === p(new Date()) ? "is-today" : ""}" data-date="${a}">\n          <div class="stbc-month-num">${s.getDate()}</div>\n          ${i.map((t) => `<div class="stbc-month-event" data-id="${t.id}">${t.allDay ? "全天" : f(t.start)} ${y(t.title)}</div>`).join("")}\n        </div>\n      `;
         },
       ).join("")}</div>`),
         t.querySelectorAll(".stbc-month-event").forEach((t) => {

@@ -134,6 +134,16 @@
   font-weight: 700 !important;
   line-height: 24px;
 }
+
+.stbc-inspector-all-day-row {
+  padding: 9px 10px;
+  border: 1px solid var(--stbc-border);
+  border-radius: 8px;
+  background: var(--stbc-panel);
+}
+.stbc-inspector-all-day-row strong {
+  font-weight: 700 !important;
+}
 .stbc-inspector-note-row {
   display: grid;
   gap: 7px;
@@ -1859,28 +1869,36 @@
 }
 .stbc-now-time--gutter{
   position: absolute !important;
-  right: 7px !important;
+  right: 5px !important;
   left: auto !important;
   transform: translateY(-50%) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  min-width: 45px !important;
-  padding: 2px 6px !important;
-  border-radius: 5px !important;
+  box-sizing: border-box !important;
+  height: 18px !important;
+  padding: 0 7px !important;
+  border-radius: 9px !important;
   background: #ef4444 !important;
   color: #fff !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  line-height: 18px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: .2px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
   z-index: 120 !important;
-  box-shadow: 0 1px 3px rgba(239,68,68,.25), 0 8px 18px rgba(239,68,68,.22) !important;
+  box-shadow: 0 1px 4px rgba(239,68,68,.32) !important;
 }
 .stbc-now-line--full{
   pointer-events: none !important;
 }
 .stbc-now-rule{
   display: block !important;
+  /* the grid already vertically centers the 2px rule on `top:l`;
+     drop the extra translateY(-50%) so the line sits exactly on `l`
+     and lines up pixel-perfectly with the gutter time badge */
+  transform: none !important;
 }
 
 /* v0.4.5: Pomodoro stateful controls + history list */
