@@ -490,6 +490,42 @@
         ? t
         : void 0;
     }
+    async loadGsap() {
+      if (this.getGsap()) return;
+      if (this._gsapLoading) return this._gsapLoading;
+      const t = "/plugins/siyuan-time-block-calendar/gsap.min.js";
+      this._gsapLoading = (async () => {
+        // 方式一：<script> 注入 —— 思源加载本地脚本的标准方式，不触发 CSP 的 unsafe-eval 限制
+        try {
+          await new Promise((e, n) => {
+            const s = document.createElement("script");
+            ((s.src = t),
+              (s.async = !1),
+              (s.dataset.stbcGsap = "1"),
+              (s.onload = () => e()),
+              (s.onerror = () => n(new Error("script load error"))),
+              document.head.appendChild(s));
+          });
+        } catch (e) {
+          console.warn("[time-block-calendar] GSAP <script> 注入失败，尝试备用方式", e);
+        }
+        // 方式二兜底：若未挂到 window.gsap（被 UMD 挂到 module.exports 等），用 fetch + Function 强制挂全局
+        if (!this.getGsap())
+          try {
+            const e = await fetch(t);
+            if (e.ok)
+              new Function("module", "exports", "define", await e.text()).call(window, void 0, void 0, void 0);
+          } catch (e) {
+            console.warn("[time-block-calendar] GSAP 备用加载失败", e);
+          }
+        const e = this.getGsap();
+        e
+          ? (e.defaults({ ease: "power3.out", duration: 0.4 }),
+            console.log("[time-block-calendar] GSAP 已就绪 ✓"))
+          : console.warn("[time-block-calendar] 未能加载 GSAP，使用内置动画");
+      })();
+      return this._gsapLoading;
+    }
     getAnimationTargets(t) {
       return (t && "number" == typeof t.length && !t.nodeType
         ? Array.from(t)
@@ -560,20 +596,29 @@
     }
     animateCalendarEntrance() {
       const t = this.rootElement?.querySelector(".stbc-calendar-panel");
-      if (!t) return;
+      if (!t || !t.firstElementChild) return;
       this.animateFromTo(t.firstElementChild, { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: 0.2 });
-      const e = Array.from(t.querySelectorAll(".stbc-event")).slice(0, 36);
+      // 从“当前周”所在位置开始截取，确保可见的一屏时间块全部都有入场动效，
+      // 而不是命中滚动缓冲区最左侧（离当前周很远）的一部分 —— 这才是之前“只有一部分动”的根因。
+      const anchor = p(this.currentDate),
+        sliceNear = (nodes, span) => {
+          const arr = Array.from(nodes);
+          if (arr.length <= span) return arr;
+          const hit = arr.findIndex((el) => (el.closest?.("[data-date]")?.dataset.date || "") >= anchor);
+          const start = hit < 0 ? 0 : Math.max(0, hit - 8);
+          return arr.slice(start, start + span);
+        };
+      const e = sliceNear(t.querySelectorAll(".stbc-event"), 90);
       e.length &&
         this.animateFromTo(
           e,
           { autoAlpha: 0, y: 22, scale: 0.92 },
-          { autoAlpha: 1, y: 0, scale: 1, duration: 0.42, ease: "back.out(1.25)", stagger: 0.026 },
+          { autoAlpha: 1, y: 0, scale: 1, duration: 0.42, ease: "back.out(1.25)", stagger: 0.022 },
         );
-      const n = Array.from(
-        t.querySelectorAll(
-          ".stbc-all-day-event, .stbc-month-event, .stbc-goal-card, .stbc-year-month, .stbc-days-card",
-        ),
-      ).slice(0, 48);
+      const n = sliceNear(
+        t.querySelectorAll(".stbc-all-day-event, .stbc-month-event, .stbc-goal-card, .stbc-year-month, .stbc-days-card"),
+        60,
+      );
       n.length &&
         this.animateFromTo(
           n,
@@ -587,6 +632,44 @@
     animateSelectedEvent(t) {
       const e = this.rootElement?.querySelectorAll(`[data-id="${t}"]`);
       this.animateTo(e, { scale: 1.015, duration: 0.12, yoyo: true, repeat: 1 });
+    }
+    animatePomodoroFinish() {
+      const t = this.getGsap();
+      if (!t || this.prefersReducedMotion()) return;
+      const e = this.rootElement?.querySelector(".stbc-pomodoro-card"),
+        s = this.rootElement?.querySelector(".stbc-pomodoro-time");
+      if (!e) return;
+      const a = t.timeline();
+      (a.fromTo(e, { scale: 0.96 }, { scale: 1, duration: 0.5, ease: "elastic.out(1, 0.5)" }),
+        s &&
+          a.fromTo(
+            s,
+            { scale: 1.4, opacity: 0.45 },
+            { scale: 1, opacity: 1, duration: 0.6, ease: "elastic.out(1, 0.45)" },
+            0,
+          ));
+    }
+    animatePomodoroPulse() {
+      const t = this.getGsap();
+      if (!t || this.prefersReducedMotion()) return;
+      const e = this.rootElement?.querySelector(".stbc-pomodoro-time");
+      e && t.fromTo(e, { scale: 1.12 }, { scale: 1, duration: 0.4, ease: "back.out(2.5)" });
+    }
+    animateEventDone(t) {
+      const e = this.getGsap();
+      if (!e || this.prefersReducedMotion() || !t) return;
+      e.fromTo(t, { scale: 0.62 }, { scale: 1, duration: 0.55, ease: "back.out(3)" });
+    }
+    animateDialogOpen(t) {
+      const e = this.getGsap();
+      if (!e || this.prefersReducedMotion()) return;
+      const s = t?.querySelector?.(".b3-dialog__container") || t;
+      s &&
+        e.fromTo(
+          s,
+          { autoAlpha: 0, scale: 0.94, y: 10 },
+          { autoAlpha: 1, scale: 1, y: 0, duration: 0.34, ease: "back.out(1.4)", clearProps: "scale,y" },
+        );
     }
     openCalendarTab() {
       if (this.isMobileFrontend()) return this.openCalendarDialog();
@@ -618,6 +701,7 @@
         }));
     }
     async render() {
+      await this.loadGsap();
       this.rootElement &&
         (this.rootElement.classList.toggle("is-mobile", this.isMobileFrontend()),
         (this.rootElement.innerHTML = this.renderShellV2()),
@@ -675,7 +759,7 @@
       </div>
     `;
     }
-    renderMainViewV2() {
+    renderMainViewV2(animate = true) {
       this.rootElement?.classList.toggle("is-goals-view", "goals" === this.viewMode);
       this.rootElement?.classList.toggle("is-important-days-view", "important-days" === this.viewMode);
       this.rootElement?.querySelector(".stbc-calendar-panel")?.classList.remove("is-hidden");
@@ -690,7 +774,7 @@
             : "year" === this.viewMode
               ? this.renderYearV2()
               : this.renderMonthV2(),
-        this.animateCalendarEntrance());
+        animate && this.animateCalendarEntrance());
     }
     renderMiniMonthV2() {
       const t = this.rootElement?.querySelector(".stbc-mini-month");
@@ -2006,11 +2090,11 @@ JSON 格式：
       if ("countdown" === this.pomodoroMode && this.pomodoroRunning && this.getPomodoroSeconds() <= 0) {
         const t = Math.max(1, Number(this.pomodoroMinutes || 25)) * 60;
         const e = ((this.pomodoroElapsed = t), (this.pomodoroRunning = !1), this.stopPomodoroTimer(), this.addPomodoroRecord(!0));
-        ((this.pomodoroSessionStartedAt = 0), this.renderPomodoroPanel(), e && this.openPomodoroRecordNoteDialog(e.id), (0, n.showMessage)(e ? "番茄钟结束，已记录一次专注" : "番茄钟结束，少于 1 分钟未记录"));
+        ((this.pomodoroSessionStartedAt = 0), this.renderPomodoroPanel(), this.animatePomodoroFinish(), e && this.openPomodoroRecordNoteDialog(e.id), (0, n.showMessage)(e ? "番茄钟结束，已记录一次专注" : "番茄钟结束，少于 1 分钟未记录"));
       }
     }
     startPomodoroTimer() {
-      (this.stopPomodoroTimer(), this.pomodoroSessionStartedAt || (this.pomodoroSessionStartedAt = Date.now() - 1e3 * Math.max(0, Math.round(this.pomodoroElapsed || 0))), (this.pomodoroStartedAt = Date.now()), (this.pomodoroRunning = !0), (this.pomodoroTimer = window.setInterval(() => this.updatePomodoroClock(), 500)), this.renderPomodoroPanel(), this.updatePomodoroClock());
+      (this.stopPomodoroTimer(), this.pomodoroSessionStartedAt || (this.pomodoroSessionStartedAt = Date.now() - 1e3 * Math.max(0, Math.round(this.pomodoroElapsed || 0))), (this.pomodoroStartedAt = Date.now()), (this.pomodoroRunning = !0), (this.pomodoroTimer = window.setInterval(() => this.updatePomodoroClock(), 500)), this.renderPomodoroPanel(), this.updatePomodoroClock(), this.animatePomodoroPulse());
     }
     pausePomodoroTimer() {
       if (!this.pomodoroRunning) return;
@@ -2243,14 +2327,23 @@ JSON 格式：
     }
 
     queueWeekBufferRecycle(t = 21) {
-      if ("week" !== this.viewMode || this.weekBufferCentering || this.weekBufferRecycling) return;
+      if ("week" !== this.viewMode) return;
       const e = this.rootElement?.querySelector(".stbc-main"),
         n = this.rootElement?.querySelector(".stbc-week .stbc-day-head");
       if (!e || !n) return;
       const s = e.scrollWidth - e.clientWidth;
       if (s <= 0) return;
       const a = n.getBoundingClientRect().width || Number.parseInt(getComputedStyle(n).minWidth || "128", 10) || 128,
-        i = Math.max(a * 5, 360);
+        i = Math.max(a * 5, 360),
+        atEdge = e.scrollLeft <= 2 || e.scrollLeft >= s - 2;
+      // 回收/居中进行中：若已滑到真正边缘，必须稍后重试 —— 否则到边缘后不再触发 scroll 事件会永久卡住，只能强刷恢复
+      if (this.weekBufferCentering || this.weekBufferRecycling) {
+        if (atEdge) {
+          window.clearTimeout(this.weekBufferRecycleTimer);
+          this.weekBufferRecycleTimer = window.setTimeout(() => this.queueWeekBufferRecycle(t), 200);
+        }
+        return;
+      }
       if (e.scrollLeft > i && e.scrollLeft < s - i) return;
       window.clearTimeout(this.weekBufferRecycleTimer);
       this.weekBufferRecycleTimer = window.setTimeout(() => this.recycleWeekBufferAroundVisibleDate(t), 90);
@@ -2266,7 +2359,7 @@ JSON 格式：
       try {
         this.currentDate = n;
         await this.loadEvents();
-        this.renderMainViewV2();
+        this.renderMainViewV2(false);
         const e = this.rootElement?.querySelector(".stbc-main");
         e && (e.scrollTop = s);
         const a = this.rootElement?.querySelector(".stbc-toolbar-title");
@@ -3866,6 +3959,12 @@ JSON 格式：
         n.id === t ? { ...n, status: e } : n,
       );
       this.renderCurrentViewFromState();
+      "done" === e &&
+        this.animateEventDone(
+          this.rootElement?.querySelector(
+            `[data-id="${t}"] .stbc-event-status, [data-id="${t}"] .stbc-month-status, [data-id="${t}"] .stbc-goal-status, [data-id="${t}"] .stbc-status`,
+          ),
+        );
       (0, n.showMessage)("done" === e ? "已标记完成" : "已标记未完成");
     }
     dateTimeInputToDate(t, e) {
