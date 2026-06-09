@@ -23,7 +23,7 @@
     IMPORTANT_DAYS_STORAGE_NAME = "time-block-calendar-important-days",
     i = 56 / 60,
     o = {
-      notebookId: "20260501173234-rjjfak4",
+      notebookId: "",
       dailyRootHPath: "/daily note",
       dayStartHour: 6,
       dayEndHour: 24,
@@ -239,18 +239,17 @@
       );
     }
     addSettings() {
-      const t = document.createElement("input");
-      ((t.className = "b3-text-field fn__block"),
-        (t.value = this.config.notebookId),
+      const t = document.createElement("select");
+      ((t.className = "b3-select fn__block"),
         t.addEventListener("change", () => {
-          this.getSettingsDraftConfig().notebookId = t.value.trim();
+          this.getSettingsDraftConfig().notebookId = t.value;
         }),
         this.setting.addItem({
-          title: "笔记本 ID",
-          description: "用于创建 daily note 日期文档。",
+          title: "笔记本",
+          description: "选择用于创建 daily note 日期文档的笔记本（自动列出已打开的笔记本，无需手填 ID）。",
           createActionElement: () => {
-            const e = this.getSettingsDraftConfig();
-            return ((e.notebookId = this.config.notebookId), (t.value = this.config.notebookId), t);
+            ((this.getSettingsDraftConfig().notebookId = this.config.notebookId), this.populateNotebookSelect(t));
+            return t;
           },
         }));
       const e = document.createElement("input");
@@ -6025,13 +6024,56 @@ JSON 格式：
       const [a, i] = t.split("-");
       return this.normalizeDocHPath(`${n}/${a}/${i}/${t}`);
     }
+    async listNotebooks() {
+      const t = await u("/api/notebook/lsNotebooks", {}).catch(() => null);
+      return Array.isArray(t?.notebooks) ? t.notebooks : [];
+    }
+    async resolveNotebookId() {
+      const notebooks = await this.listNotebooks(),
+        open = notebooks.filter((nb) => !nb.closed);
+      if (!open.length)
+        throw new Error(
+          notebooks.length
+            ? "当前没有已打开的笔记本，请在思源中打开一个笔记本后再创建日程。"
+            : "未找到任何笔记本，请先在思源中创建并打开一个笔记本。",
+        );
+      const current = this.config.notebookId;
+      if (current && open.some((nb) => nb.id === current)) return current;
+      const picked = open[0];
+      ((this.config.notebookId = picked.id),
+        await this.saveData(a, this.config).catch(() => {}),
+        (0, n.showMessage)(
+          `时间块日历：已自动选择笔记本「${picked.name}」用于创建日记文档，可在插件设置中修改。`,
+        ));
+      return picked.id;
+    }
+    async populateNotebookSelect(selectEl) {
+      const notebooks = await this.listNotebooks(),
+        open = notebooks.filter((nb) => !nb.closed);
+      selectEl.innerHTML = "";
+      if (!open.length) {
+        const opt = document.createElement("option");
+        ((opt.value = ""), (opt.textContent = "未找到已打开的笔记本"));
+        selectEl.appendChild(opt);
+        return;
+      }
+      for (const nb of open) {
+        const opt = document.createElement("option");
+        ((opt.value = nb.id), (opt.textContent = nb.name));
+        selectEl.appendChild(opt);
+      }
+      const current = this.config.notebookId,
+        selected = current && open.some((nb) => nb.id === current) ? current : open[0].id;
+      ((selectEl.value = selected), (this.getSettingsDraftConfig().notebookId = selected));
+    }
     async ensureDailyDoc(t) {
       const e = this.getDailyDocHPath(t),
         n = await this.findDocByHPath(e);
       if (n) return n;
-      const s = `${e}.sy`,
+      const notebookId = await this.resolveNotebookId(),
+        s = `${e}.sy`,
         a = await u("/api/filetree/createDocWithMd", {
-          notebook: this.config.notebookId,
+          notebook: notebookId,
           path: s,
           markdown: `# ${t}\n\n`,
         }).catch(async () => {
