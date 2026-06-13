@@ -1259,7 +1259,7 @@
 }
 
 /* Desktop system notification settings */
-.stbc-setting-notification{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stbc-setting-checkbox{display:inline-flex;align-items:center;gap:6px;line-height:1.4;white-space:nowrap}.stbc-setting-checkbox input{margin:0}
+.stbc-setting-notification{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stbc-setting-checkbox{display:inline-flex;align-items:center;gap:6px;line-height:1.4;white-space:normal;overflow-wrap:anywhere;max-width:100%}.stbc-setting-checkbox input{margin:0;flex:none}
 
 /* v0.4.9: gear settings entry */
 .stbc-settings-button{font-size:15px !important;}
@@ -2713,4 +2713,16 @@
 /* 时间徽标所在的 gutter 抬到红线之上，否则红线(z-index:80)会盖住最左侧的时间 */
 .stbc-time-gutter{
   z-index: 90 !important;
+}
+
+/* v0.5.24: 设置项——周视图显示时段的两个小时输入框 */
+.stbc-setting-hours{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.stbc-setting-hours .b3-text-field{
+  width: 64px;
+  text-align: center;
 }

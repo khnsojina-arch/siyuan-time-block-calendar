@@ -27,6 +27,7 @@
       dailyRootHPath: "/daily note",
       dayStartHour: 6,
       dayEndHour: 24,
+      weekLayoutFixed: false,
       slotMinutes: 15,
       labelOptions: [
         "自控",
@@ -190,10 +191,18 @@
         }),
         (this.setting = new n.Setting({
           confirmCallback: () => {
-            (this.settingsDraftConfig && (this.config = { ...this.config, ...this.settingsDraftConfig }),
-              (this.settingsDraftConfig = void 0),
-              this.saveData(a, this.config),
+            if (this.settingsDraftConfig) {
+              this.config = { ...this.config, ...this.settingsDraftConfig };
+              this.settingsDraftConfig = void 0;
+            }
+            // 规范化周视图时段与布局，避免非法输入
+            this.config.dayStartHour = Math.max(0, Math.min(23, Math.round(Number(this.config.dayStartHour)) || 0));
+            this.config.dayEndHour = Math.max(this.config.dayStartHour + 1, Math.min(24, Math.round(Number(this.config.dayEndHour)) || 24));
+            this.config.weekLayoutFixed = Boolean(this.config.weekLayoutFixed);
+            (this.saveData(a, this.config),
               this.renderPomodoroPanel(),
+              // 时段 / 布局变更需要重排日历，若日历标签页已打开则立即重渲染
+              this.rootElement && this.render(),
               (0, n.showMessage)("时间块日历设置已保存"));
           },
         })),
@@ -224,6 +233,9 @@
         (this.settingsDraftConfig = {
           notebookId: this.config.notebookId,
           dailyRootHPath: this.config.dailyRootHPath,
+          dayStartHour: this.config.dayStartHour,
+          dayEndHour: this.config.dayEndHour,
+          weekLayoutFixed: this.config.weekLayoutFixed,
           desktopNotificationEnabled: this.config.desktopNotificationEnabled,
           desktopNotificationMissedEnabled: this.config.desktopNotificationMissedEnabled,
           pomodoroVisible: this.config.pomodoroVisible,
@@ -265,6 +277,66 @@
           createActionElement: () => {
             const t = this.getSettingsDraftConfig();
             return ((t.dailyRootHPath = this.config.dailyRootHPath), (e.value = this.config.dailyRootHPath), e);
+          },
+        }));
+      // 周视图显示时段（自定义“黄金时间段”，隐藏用不到的清晨/深夜）
+      const hourBox = document.createElement("div"),
+        startHourInput = document.createElement("input"),
+        endHourInput = document.createElement("input"),
+        hourSep = document.createElement("span"),
+        hourSuffix = document.createElement("span");
+      ((hourBox.className = "stbc-setting-hours"),
+        (startHourInput.type = "number"),
+        (startHourInput.min = "0"),
+        (startHourInput.max = "23"),
+        (startHourInput.className = "b3-text-field"),
+        (endHourInput.type = "number"),
+        (endHourInput.min = "1"),
+        (endHourInput.max = "24"),
+        (endHourInput.className = "b3-text-field"),
+        (hourSep.textContent = "点 ～"),
+        (hourSuffix.textContent = "点"),
+        hourBox.appendChild(startHourInput),
+        hourBox.appendChild(hourSep),
+        hourBox.appendChild(endHourInput),
+        hourBox.appendChild(hourSuffix));
+      const syncHours = () => {
+        const draft = this.getSettingsDraftConfig(),
+          s = Math.max(0, Math.min(23, Math.round(Number(startHourInput.value)) || 0)),
+          e2 = Math.max(s + 1, Math.min(24, Math.round(Number(endHourInput.value)) || 24));
+        ((draft.dayStartHour = s), (draft.dayEndHour = e2));
+      };
+      (startHourInput.addEventListener("change", syncHours),
+        endHourInput.addEventListener("change", syncHours),
+        this.setting.addItem({
+          title: "周视图显示时段",
+          description: "只显示常用的“黄金时间段”，隐藏用不到的清晨和深夜。例如填 8 ～ 22 表示只显示 8:00–22:00；范围越小，时间块行越高、越好操作。",
+          createActionElement: () => {
+            const t = this.getSettingsDraftConfig();
+            ((t.dayStartHour = this.config.dayStartHour),
+              (t.dayEndHour = this.config.dayEndHour),
+              (startHourInput.value = String(this.config.dayStartHour)),
+              (endHourInput.value = String(this.config.dayEndHour)));
+            return hourBox;
+          },
+        }));
+      // 周视图布局：固定周一为首列 vs 当天居中无限滚动
+      const weekLayoutToggle = document.createElement("label"),
+        weekLayoutCheckbox = document.createElement("input");
+      ((weekLayoutToggle.className = "stbc-setting-checkbox"),
+        (weekLayoutCheckbox.type = "checkbox"),
+        (weekLayoutCheckbox.checked = Boolean(this.config.weekLayoutFixed)),
+        weekLayoutToggle.appendChild(weekLayoutCheckbox),
+        weekLayoutToggle.appendChild(document.createTextNode(" 固定周一为第一列")),
+        weekLayoutCheckbox.addEventListener("change", () => {
+          this.getSettingsDraftConfig().weekLayoutFixed = weekLayoutCheckbox.checked;
+        }),
+        this.setting.addItem({
+          title: "周视图布局",
+          description: "开启后周视图固定按“周一→周日”排列，每周一始终在最左列，方便快速定位某一天；关闭则保持当天居中、可左右无限滚动。",
+          createActionElement: () => {
+            const t = this.getSettingsDraftConfig();
+            return ((t.weekLayoutFixed = Boolean(this.config.weekLayoutFixed)), (weekLayoutCheckbox.checked = Boolean(this.config.weekLayoutFixed)), weekLayoutToggle);
           },
         }));
       const pomodoroToggle = document.createElement("label"),
@@ -2171,6 +2243,9 @@ JSON 格式：
     }
 
     renderWeekV2() {
+      // 固定布局：周一→周日 7 天，每周一始终在最左列，不滚动（q=0）
+      if (this.config.weekLayoutFixed)
+        return this.renderDaysV2(b(this.currentDate), 7, "stbc-week--fixed", 0);
       // v0.4.4: real touchpad-style infinite week scrolling.
       // Render a recyclable 7-week window, then silently re-center it near either edge.
       return this.renderDaysV2(m(b(this.currentDate), -21), 49, "stbc-week--buffered", 21);
@@ -2188,7 +2263,7 @@ JSON 格式：
         o = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
         mainWidth = this.rootElement?.querySelector(".stbc-main")?.clientWidth || 980,
         dayWidth = Math.max(96, Math.floor((mainWidth - 64) / 7)),
-        l = 3 === r ? "180px" : q > 0 ? `${dayWidth}px` : "128px",
+        l = 3 === r ? "180px" : q > 0 || 7 === r ? `${dayWidth}px` : "128px",
         minWidth = `${64 + r * Number.parseInt(l, 10)}px`;
       ((t.innerHTML = `
       <div class="stbc-week ${c || ""}" style="--stbc-hours:${s};--stbc-days:${n.length};--stbc-min-day-width:${l};min-width:${minWidth}">
@@ -2322,6 +2397,7 @@ JSON 格式：
     }
 
     getVisibleWeekAnchorDate() {
+      if (this.config.weekLayoutFixed) return b(this.currentDate);
       const t = this.getVisibleDateFromScroll("left") || this.currentDate;
       return b(t);
     }
@@ -5111,7 +5187,7 @@ JSON 格式：
     sanitizeImportedConfig(t) {
       const e = { ...this.config };
       if (!t || "object" != typeof t) return e;
-      const n = ["notebookId", "dailyRootHPath", "dayStartHour", "dayEndHour", "slotMinutes", "desktopNotificationEnabled", "desktopNotificationMissedEnabled", "pomodoroVisible"];
+      const n = ["notebookId", "dailyRootHPath", "dayStartHour", "dayEndHour", "weekLayoutFixed", "slotMinutes", "desktopNotificationEnabled", "desktopNotificationMissedEnabled", "pomodoroVisible"];
       n.forEach((n) => {
         Object.prototype.hasOwnProperty.call(t, n) && (e[n] = t[n]);
       });
@@ -5121,6 +5197,7 @@ JSON 格式：
       e.dailyRootHPath = String(e.dailyRootHPath || "/daily note").trim() || "/daily note";
       e.dayStartHour = Math.max(0, Math.min(23, Number(e.dayStartHour || 6)));
       e.dayEndHour = Math.max(e.dayStartHour + 1, Math.min(24, Number(e.dayEndHour || 24)));
+      e.weekLayoutFixed = Boolean(e.weekLayoutFixed);
       e.slotMinutes = [5, 10, 15, 20, 30, 60].includes(Number(e.slotMinutes)) ? Number(e.slotMinutes) : 15;
       return e;
     }
