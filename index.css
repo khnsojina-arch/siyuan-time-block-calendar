@@ -2689,3 +2689,28 @@
     0 8px 16px rgba(15, 23, 42, .10),
     0 16px 32px rgba(15, 23, 42, .09) !important;
 }
+
+/* ===== v0.5.23: 红色时间轴——今天那一列加粗+圆点，其余细线（对比） ===== */
+.stbc-now-line--full .stbc-now-rule{
+  position: absolute !important;
+  top: 50% !important;
+  right: 0 !important;
+  transform: translateY(-50%) !important;
+  height: 2px !important;
+  background: rgba(239, 68, 68, .62) !important;
+}
+.stbc-now-rule-today{
+  position: absolute !important;
+  top: 50% !important;
+  height: 3px !important;
+  border-radius: 3px !important;
+  background: #ef4444 !important;
+  transform: translateY(-50%) !important;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, .45) !important;
+  z-index: 83 !important;
+  pointer-events: none !important;
+}
+/* 时间徽标所在的 gutter 抬到红线之上，否则红线(z-index:80)会盖住最左侧的时间 */
+.stbc-time-gutter{
+  z-index: 90 !important;
+}

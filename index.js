@@ -2226,7 +2226,7 @@ JSON 格式：
         u = this.computeEventLayouts(d);
       for (const t of d)
         this.placeWeekEventV2(t, u.get(t.id) || { lane: 0, laneCount: 1 });
-      q > 0 && (this.scrollWeekBufferIntoView(q), this.bindWeekBufferScroll(q));
+      q > 0 && (this.weekBufferSkipCenter || this.scrollWeekBufferIntoView(q), this.bindWeekBufferScroll(q));
     }
 
     scrollWeekBufferIntoView(t) {
@@ -2334,42 +2334,74 @@ JSON 格式：
       const s = e.scrollWidth - e.clientWidth;
       if (s <= 0) return;
       const a = n.getBoundingClientRect().width || Number.parseInt(getComputedStyle(n).minWidth || "128", 10) || 128,
-        i = Math.max(a * 5, 360),
-        atEdge = e.scrollLeft <= 2 || e.scrollLeft >= s - 2;
-      // 回收/居中进行中：若已滑到真正边缘，必须稍后重试 —— 否则到边缘后不再触发 scroll 事件会永久卡住，只能强刷恢复
+        i = Math.max(a * 7, 500);
+      // 初次居中进行中：若已滑到真正边缘，稍后重试 —— 否则到边缘后不再触发 scroll 事件会永久卡住
       if (this.weekBufferCentering || this.weekBufferRecycling) {
-        if (atEdge) {
+        if (e.scrollLeft <= 2 || e.scrollLeft >= s - 2) {
           window.clearTimeout(this.weekBufferRecycleTimer);
-          this.weekBufferRecycleTimer = window.setTimeout(() => this.queueWeekBufferRecycle(t), 200);
+          this.weekBufferRecycleTimer = window.setTimeout(() => this.queueWeekBufferRecycle(t), 120);
         }
         return;
       }
       if (e.scrollLeft > i && e.scrollLeft < s - i) return;
+      // 同步回收：进入阈值立即原地平移缓冲区，不能延迟 —— 延迟期间用户会撞上缓冲区硬边界
       window.clearTimeout(this.weekBufferRecycleTimer);
-      this.weekBufferRecycleTimer = window.setTimeout(() => this.recycleWeekBufferAroundVisibleDate(t), 90);
+      this.recycleWeekBufferAroundVisibleDate(t);
     }
 
-    async recycleWeekBufferAroundVisibleDate(t = 21) {
+    recycleWeekBufferAroundVisibleDate(t = 21) {
       if ("week" !== this.viewMode || this.weekBufferRecycling) return;
       const e = this.rootElement?.querySelector(".stbc-main");
       if (!e) return;
+      const oldStartKey = this.rootElement?.querySelector(".stbc-day-column[data-date]")?.dataset?.date;
+      if (!oldStartKey) return;
       const n = this.getVisibleDateFromScroll("center") || this.getVisibleDateFromScroll("left") || this.currentDate,
-        s = e.scrollTop || 0;
+        s = e.scrollTop || 0,
+        oldLeft = e.scrollLeft,
+        oldStart = new Date(`${oldStartKey}T12:00:00`),
+        newStart = new Date(`${p(m(b(n), -t))}T12:00:00`),
+        shiftDays = Math.round((newStart.getTime() - oldStart.getTime()) / 864e5);
+      if (!shiftDays || Number.isNaN(shiftDays)) return;
       this.weekBufferRecycling = true;
+      this.weekBufferSkipCenter = true;
       try {
+        // 用已加载的事件同步重建 DOM，并在同一帧内按整周偏移做像素级 scrollLeft 补偿，
+        // 视觉上完全连续；事件数据稍后在后台刷新（refreshWeekEventsInPlace），不再动滚动位置。
         this.currentDate = n;
-        await this.loadEvents();
         this.renderMainViewV2(false);
-        const e = this.rootElement?.querySelector(".stbc-main");
-        e && (e.scrollTop = s);
+        const main = this.rootElement?.querySelector(".stbc-main");
+        if (main) {
+          const head = this.rootElement?.querySelector(".stbc-week .stbc-day-head"),
+            dayW = head?.getBoundingClientRect?.().width || Number.parseInt(head ? getComputedStyle(head).minWidth || "128" : "128", 10) || 128;
+          main.scrollLeft = Math.max(0, Math.min(main.scrollWidth - main.clientWidth, Math.round(oldLeft - shiftDays * dayW)));
+          main.scrollTop = s;
+        }
         const a = this.rootElement?.querySelector(".stbc-toolbar-title");
         a && (a.textContent = this.getToolbarTitleV2());
         this.renderMiniMonthV2();
       } catch (t) {
         console.warn("week buffer recycle failed", t);
       } finally {
-        window.setTimeout(() => (this.weekBufferRecycling = false), 160);
+        this.weekBufferSkipCenter = false;
+        this.weekBufferRecycling = false;
       }
+      this.loadEvents()
+        .then(() => this.refreshWeekEventsInPlace())
+        .catch((t) => console.warn("week buffer event refresh failed", t));
+    }
+
+    refreshWeekEventsInPlace() {
+      if (!["week", "three"].includes(this.viewMode)) return;
+      const cols = Array.from(this.rootElement?.querySelectorAll(".stbc-day-column[data-date]") || []);
+      if (!cols.length) return;
+      this.rootElement?.querySelectorAll(".stbc-day-column .stbc-event, .stbc-all-day-event").forEach((t) => t.remove());
+      const dates = cols
+        .map((t) => new Date(`${t.dataset.date}T12:00:00`))
+        .filter((t) => !Number.isNaN(t.getTime()));
+      dates.length && this.placeAllDayEvents(dates);
+      const timed = this.events.filter((t) => !t.allDay),
+        layouts = this.computeEventLayouts(timed);
+      for (const t of timed) this.placeWeekEventV2(t, layouts.get(t.id) || { lane: 0, laneCount: 1 });
     }
 
     placeWeekEventV2(t, e) {
@@ -5598,22 +5630,36 @@ JSON 格式：
       const a = 60 * (this.config.dayEndHour - this.config.dayStartHour),
         o = 60 * (t.getHours() - this.config.dayStartHour) + t.getMinutes() + t.getSeconds() / 60;
       if (o < 0 || o > a) return;
-      const metrics = this.getDayColumnMetrics(s),
-        c = Math.max(1, gutter?.clientHeight || metrics.rect?.height || s.clientHeight || a * i),
-        timelineTop = Number.isFinite(gutter?.offsetTop) ? gutter.offsetTop : n.offsetTop,
-        l = timelineTop + (o / a) * c,
+      // 全部用 offsetTop/offsetLeft/offsetHeight 定位（布局坐标，免疫 GSAP transform；
+      // 且与 CSS top 同为 offsetParent 的 padding-box 基准，不会有 border-box 误差）。
+      // n（当天列）、gutter 的 offsetParent 都是 .stbc-week-body；s（内层格）的 offsetParent 是 n。
+      const height = s.offsetHeight > 0 ? s.offsetHeight : a * i,
+        timelineTop = n.offsetTop + s.offsetTop, // 时间轴顶端相对 week-body 的 padding-box
+        l = timelineTop + (o / a) * height,
         d = document.createElement("div");
       ((d.className = "stbc-now-line stbc-now-line--full"),
         (d.style.top = `${l}px`),
-        (d.innerHTML = `<span class="stbc-now-time stbc-now-time--inline">${f(t)}</span><span class="stbc-now-rule"></span>`),
+        (d.innerHTML = `<span class="stbc-now-rule"></span>`),
         e.appendChild(d));
+      // 细红线改为绝对定位（不再依赖 grid 居中，避免被隐藏的内联徽标撑高行高导致整体偏下）
+      {
+        const rule = d.querySelector(".stbc-now-rule");
+        if (rule) rule.style.left = `${gutter ? gutter.offsetWidth : 64}px`;
+      }
+      // 今天那一列的时间轴加粗 + 圆点，其余保持细线，形成对比
+      {
+        const seg = document.createElement("div");
+        seg.className = "stbc-now-rule-today";
+        seg.style.left = `${n.offsetLeft - (d.offsetLeft || 0)}px`;
+        seg.style.width = `${n.offsetWidth}px`;
+        d.appendChild(seg);
+      }
       if (gutter) {
         const badge = document.createElement("div");
         badge.className = "stbc-now-time stbc-now-time--gutter";
-        // anchor the badge's vertical center to the line's actually rendered
-        // position so they stay pixel-aligned regardless of rounding/borders
-        const badgeTop = Number.isFinite(d.offsetTop) ? d.offsetTop - timelineTop : (o / a) * c;
-        badge.style.top = `${badgeTop}px`;
+        // 与红线同一基准：换算到 gutter 的坐标系（gutter 与当天列同处一行，offsetTop 相同）。
+        // badge 自带 translateY(-50%) 居中 → 中心精确落在红线中心。
+        badge.style.top = `${l - gutter.offsetTop - (gutter.clientTop || 0)}px`;
         badge.textContent = f(t);
         gutter.appendChild(badge);
       }
